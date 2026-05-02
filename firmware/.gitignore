@@ -1,0 +1,7 @@
+# Build output
+build/
+
+# libopencm3 compiled files
+../Drivers/libopencm3/lib/
+../Drivers/libopencm3/*.o
+../Drivers/libopencm3/*.a
