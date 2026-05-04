@@ -6,9 +6,12 @@
 #include "gpio.h"
 #include "uart.h"
 #include "systick.h"
+#include <libopencm3/stm32/rcc.h>
 
 int main(void)
 {
+
+    
     gpio_driver_init();
     systick_init();
     uart_init();
