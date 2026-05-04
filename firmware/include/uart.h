@@ -20,4 +20,7 @@ void uart_send_string(const char *str);
 /** @brief Envoie un octet en hexadécimal ASCII (ex. 0xFA). @param[in] val Octet à afficher. */
 void uart_send_hex(uint8_t val);
 
+/** @brief Envoie un entier non signé en décimal. @param val Valeur 32 bits. */
+void uart_send_int(uint32_t val);
+
 #endif /* UART_H */

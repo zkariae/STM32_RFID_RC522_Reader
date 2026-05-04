@@ -84,7 +84,6 @@ LDFLAGS += -T$(LNK_DIR)/STM32F407VGTx.ld
 LDFLAGS += -Wl,--gc-sections
 LDFLAGS += -Wl,-Map=$(BIN_DIR)/$(TARGET).map
 LDFLAGS += -L$(OPENCM3_DIR)/lib
-LDFLAGS += -lopencm3_stm32f4
 LDFLAGS += -nostdlib
 LDFLAGS += --specs=nosys.specs
 LDFLAGS += --specs=nano.specs
@@ -103,7 +102,11 @@ $(BIN_DIR)/$(TARGET).hex: $(BIN_DIR)/$(TARGET).elf
 
 $(BIN_DIR)/$(TARGET).elf: $(OBJS) | $(BIN_DIR)
 	@echo "[LD]   $@"
-	@$(LD) $(LDFLAGS) $^ -o $@
+	$(LD) $(ARCH) $^ -T$(LNK_DIR)/STM32F407VGTx.ld -Wl,--gc-sections \
+      -Wl,-Map=$(BIN_DIR)/$(TARGET).map \
+      -L$(OPENCM3_DIR)/lib -lopencm3_stm32f4 \
+      -nostdlib --specs=nosys.specs --specs=nano.specs \
+      -o $@
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	@echo "[CC]   $<"
