@@ -15,7 +15,7 @@
 void spi_driver_init(void)
 {
     rcc_periph_clock_enable(RCC_SPI1);
-    spi_reset(SPI1);
+    //spi_reset(SPI1);
     spi_init_master(SPI1,
                     SPI_CR1_BAUDRATE_FPCLK_DIV_16,    /* PCLK/16 ≈ 5.25 MHz  */
                     SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,  /* CPOL = 0             */
