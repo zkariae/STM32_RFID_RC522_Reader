@@ -54,3 +54,27 @@ void uart_send_hex(uint8_t val)
     uart_send_char(hex[(val >> 4) & 0x0F]);  /* nibble haut */
     uart_send_char(hex[val & 0x0F]);          /* nibble bas  */
 }
+
+/** 
+ *@brief Envoie un entier non signé en décimal via USART2. 
+ *@param val Valeur 32 bits. 
+ */
+void uart_send_int(uint32_t val)
+{
+    char buf[10];
+    uint8_t i = 0;
+
+    if (val == 0) {
+        uart_send_char('0');
+        return;
+    }
+
+    while (val > 0) {
+        buf[i++] = '0' + (val % 10);
+        val /= 10;
+    }
+
+    for (int j = i - 1; j >= 0; j--) {
+        uart_send_char(buf[j]);
+    }
+}
