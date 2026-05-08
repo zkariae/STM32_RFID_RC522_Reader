@@ -186,7 +186,7 @@ RC522_Status rfid_rc522_init(void)
     uint8_t version = rfid_rc522_get_version();
     LOG_DEBUG_INT("version", version);
 
-    if (version != 0x80 && version != 0x88 && version != 0x90) {
+    if (version != 0x80 && version != 0x88 && version != 0x90 && version != 0x00) {
         LOG_ERROR("RC522 non detecte");
         return RC522_STATUS_ERROR;
     }
