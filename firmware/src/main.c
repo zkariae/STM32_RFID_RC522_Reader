@@ -3,6 +3,7 @@
 #include "systick.h"
 #include "log.h"
 #include "spi.h"
+#include "rfid_rc522.h"
 
 int main(void)
 {
@@ -66,74 +67,54 @@ int main(void)
         uart_send_string("\r\n");
     }
 
-    /* Test detection carte - avec verification erreur */
-    uart_send_string("\r\nTest detection carte:\r\n");
+    /* Test avec driver RFID existant */
+    uart_send_string("\r\nTest detection avec driver:\r\n");
 
-    /* Clear IRQ et FIFO */
-    RC522_CS_LOW();
-    for (volatile int j = 0; j < 100000; j++) { }
-    rc522_spi_write(0x00);
-    for (volatile int j = 0; j < 20000; j++) { }
-    rc522_spi_write(0x04);  /* CommIrq reg */
-    for (volatile int j = 0; j < 20000; j++) { }
-    rc522_spi_write(0x7F);  /* Clear all IRQ */
-    for (volatile int j = 0; j < 30000; j++) { }
-    RC522_CS_HIGH();
-    for (volatile int j = 0; j < 100000; j++) { }
+    /* Reset hardware */
+    RC522_RST_LOW();
+    for (volatile int i = 0; i < 100000; i++) { }
+    RC522_RST_HIGH();
+    for (volatile int i = 0; i < 500000; i++) { }
 
-    /* Config RxMode - 106kbps */
-    RC522_CS_LOW();
-    for (volatile int j = 0; j < 100000; j++) { }
-    rc522_spi_write(0x00);
-    for (volatile int j = 0; j < 20000; j++) { }
-    rc522_spi_write(0x13);  /* RxMode reg */
-    for (volatile int j = 0; j < 20000; j++) { }
-    rc522_spi_write(0x00);  /* No CRC */
-    for (volatile int j = 0; j < 30000; j++) { }
-    RC522_CS_HIGH();
-    for (volatile int j = 0; j < 100000; j++) { }
-
-    /* Send REQA */
-    RC522_CS_LOW();
-    for (volatile int j = 0; j < 100000; j++) { }
-    rc522_spi_write(0x00);
-    for (volatile int j = 0; j < 20000; j++) { }
-    rc522_spi_write(0x09);  /* FIFO */
-    for (volatile int j = 0; j < 20000; j++) { }
-    rc522_spi_write(0x26);  /* REQA */
-    for (volatile int j = 0; j < 30000; j++) { }
-    rc522_spi_write(0x01);  /* Command */
-    for (volatile int j = 0; j < 20000; j++) { }
-    rc522_spi_write(0x0C);  /* Transceive */
-    for (volatile int j = 0; j < 100000; j++) { }
+    /* Init RC522 via driver */
+    RC522_Status status = rfid_rc522_init();
     
-    /* Wait */
-    for (volatile int j = 0; j < 200000; j++) { }
-    
-    /* Check IRQ */
-    rc522_spi_write(0x80 | 0x04);  /* CommIrq */
-    for (volatile int j = 0; j < 20000; j++) { }
-    uint8_t irq = rc522_spi_read();
-    for (volatile int j = 0; j < 20000; j++) { }
-    
-    /* Check Error reg */
-    rc522_spi_write(0x80 | 0x06);  /* Error reg */
-    for (volatile int j = 0; j < 20000; j++) { }
-    uint8_t err = rc522_spi_read();
-    for (volatile int j = 0; j < 20000; j++) { }
-    RC522_CS_HIGH();
-
-    uart_send_string("CommIrq: ");
-    uart_send_hex(irq);
+    uart_send_string("Init status: ");
+    uart_send_hex(status);
     uart_send_string("\r\n");
-    uart_send_string("Error: ");
-    uart_send_hex(err);
-    uart_send_string("\r\n");
-
-    if (irq & 0x30) {
-        uart_send_string("Carte detectee!\r\n");
+    
+    if (status == RC522_STATUS_OK) {
+        uart_send_string("RC522 init OK\r\n");
+        
+        /* Request card - plusieurs tentatives */
+        for (int i = 0; i < 3; i++) {
+            uart_send_string("Essai ");
+            uart_send_int(i + 1);
+            uart_send_string("\r\n");
+            
+            uint8_t atqa[2];
+            status = rfid_rc522_request(atqa);
+            
+            uart_send_string("Request status: ");
+            uart_send_hex(status);
+            uart_send_string("\r\n");
+            
+            if (status == RC522_STATUS_OK) {
+                uart_send_string("Carte detectee!\r\n");
+                uart_send_string("ATQA: ");
+                uart_send_hex(atqa[0]);
+                uart_send_string(" ");
+                uart_send_hex(atqa[1]);
+                uart_send_string("\r\n");
+                break;
+            } else {
+                uart_send_string("Pas de carte\r\n");
+            }
+            
+            for (volatile int j = 0; j < 500000; j++) { }
+        }
     } else {
-        uart_send_string("Pas de carte\r\n");
+        uart_send_string("RC522 init ERREUR\r\n");
     }
 
     uart_send_string("\r\nFini\r\n");
