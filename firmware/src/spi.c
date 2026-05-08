@@ -17,7 +17,7 @@ void spi_driver_init(void)
 
     /* SPI2: Mode 1 (CPOL=1, CPHA=0), Master, 8 bits, MSB first, ~5.25MHz */
     spi_init_master(SPI2,
-                    SPI_CR1_BAUDRATE_FPCLK_DIV_8,     /* ~5.25 MHz */
+                    SPI_CR1_BAUDRATE_FPCLK_DIV_8,    /* ~5.25 MHz */
                     SPI_CR1_CPOL_CLK_TO_1_WHEN_IDLE,  /* CPOL = 1 */
                     SPI_CR1_CPHA_CLK_TRANSITION_1,    /* CPHA = 0 */
                     SPI_CR1_DFF_8BIT,
