@@ -156,40 +156,21 @@ static RC522_Status rc522_transceive(uint8_t cmd,
 
     rc522_write_reg(RC522_REG_COMMAND, cmd);
 
-    LOG_DEBUG("Command sent");
-
     if (cmd == RC522_PCD_TRANSCEIVE) {
         rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
     }
 
-    LOG_DEBUG("Starting wait loop");
     timeout = 10000;
     do {
         irq = rc522_read_reg(RC522_REG_COMM_IRQ);
         timeout--;
-        if (timeout % 2000 == 0) {
-            LOG_DEBUG_INT("Timeout", timeout);
-            LOG_DEBUG_INT("IRQ", irq);
-        }
     } while (!(irq & wait_irq) && timeout);
     
-LOG_DEBUG_INT("Wait done, IRQ", irq);
-    LOG_DEBUG_INT("Timeout final", timeout);
-    LOG_DEBUG_INT("wait_irq expected", wait_irq);
-    
-    _error_code = rc522_read_reg(RC522_REG_ERROR);
-    LOG_DEBUG_INT("Error", _error_code);
-    
     if (timeout == 0) {
-        LOG_DEBUG("Timeout - returning TIMEOUT");
         return RC522_STATUS_TIMEOUT;
     }
     if (_error_code & 0x13) {
         return RC522_STATUS_ERROR;
-    }
-
-    if (timeout == 0) {
-        return RC522_STATUS_TIMEOUT;
     }
 
     if (irq & 0x01) {
@@ -289,11 +270,9 @@ RC522_Status rfid_rc522_request(uint8_t *atqa)
 
     rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
 
-    LOG_DEBUG("Sending REQA");
     status = rc522_transceive(RC522_PCD_TRANSCEIVE,
                                send_data, 1,
                                recv_data, 2);
-    LOG_DEBUG_INT("transceive status", status);
 
     if (status == RC522_STATUS_OK) {
         atqa[0] = recv_data[0];
@@ -314,27 +293,30 @@ RC522_Status rfid_rc522_anticoll(RC522_UID *uid)
         uid->uid[i] = 0;
     }
 
+    /* Reset RC522 state before anticollision */
+    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rc522_clear_fifo();
+    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rc522_write_reg(RC522_REG_ERROR, 0x00);
+    
     rc522_write_reg(RC522_REG_RX_MODE, 0x00);
 
     send_data[0] = PICC_CMD_ANTICOLL_1;
     send_data[1] = 0x20;  /* NVB: 2 bytes */
 
-    rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
+    /* Enable StartSend bit for anticollision */
+    rc522_set_bits(RC522_REG_BIT_FRAMING, 0x80, 0x80);
 
     status = rc522_transceive(RC522_PCD_TRANSCEIVE,
                                send_data, 2,
                                recv_data, 12);
 
     if (status == RC522_STATUS_OK) {
-        uint8_t count = rc522_fifo_count();
-        if (count >= 5) {
-            uid->size = 4;
-            for (int i = 0; i < 4; i++) {
-                uid->uid[i] = recv_data[i];
-            }
-            /* BCC is at recv_data[4], can be used for verification */
-        } else {
-            return RC522_STATUS_ERROR;
+        /* Data is already in recv_data from transceive */
+        /* First byte is UID bytes, 5th byte is BCC */
+        uid->size = 4;
+        for (int i = 0; i < 4; i++) {
+            uid->uid[i] = recv_data[i];
         }
     }
 
@@ -347,6 +329,12 @@ RC522_Status rfid_rc522_select(RC522_UID *uid)
     uint8_t recv_data[4];
     RC522_Status status;
 
+    /* Reset RC522 state before select */
+    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rc522_clear_fifo();
+    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rc522_write_reg(RC522_REG_ERROR, 0x00);
+
     /* Calculate BCC (Block Check Character) */
     uint8_t bcc = uid->uid[0] ^ uid->uid[1] ^ uid->uid[2] ^ uid->uid[3];
 
@@ -357,7 +345,8 @@ RC522_Status rfid_rc522_select(RC522_UID *uid)
     }
     send_data[6] = bcc;  /* BCC */
 
-    rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
+    /* Enable StartSend bit for select */
+    rc522_set_bits(RC522_REG_BIT_FRAMING, 0x80, 0x80);
 
     status = rc522_transceive(RC522_PCD_TRANSCEIVE,
                                send_data, 7,
