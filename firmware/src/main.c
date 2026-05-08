@@ -35,8 +35,8 @@ int main(void)
 
         uart_send_string("Essai ");
         uart_send_int(i + 1);
-        uart_send_string(": 0x");
-        uart_send_int(v);
+        uart_send_string(": ");
+        uart_send_hex(v);
         uart_send_string("\r\n");
 
         for (volatile int j = 0; j < 100000; j++) { }
@@ -54,8 +54,8 @@ int main(void)
     for (volatile int j = 0; j < 5000; j++) { }
     RC522_CS_HIGH();
     for (volatile int j = 0; j < 20000; j++) { }
-    uart_send_string("FIFO Level (0x0A): 0x");
-    uart_send_int(fifo);
+    uart_send_string("FIFO Level (0x0A): ");
+    uart_send_hex(fifo);
     uart_send_string("\r\n");
 
     /* Status 2 (0x08) */
@@ -67,8 +67,8 @@ int main(void)
     for (volatile int j = 0; j < 5000; j++) { }
     RC522_CS_HIGH();
     for (volatile int j = 0; j < 20000; j++) { }
-    uart_send_string("Status 2 (0x08): 0x");
-    uart_send_int(status2);
+    uart_send_string("Status 2 (0x08): ");
+    uart_send_hex(status2);
     uart_send_string("\r\n");
 
     /* Command (0x01) - should be 0x00 after reset */
@@ -80,8 +80,8 @@ int main(void)
     for (volatile int j = 0; j < 5000; j++) { }
     RC522_CS_HIGH();
     for (volatile int j = 0; j < 20000; j++) { }
-    uart_send_string("Command (0x01): 0x");
-    uart_send_int(cmd);
+    uart_send_string("Command (0x01): ");
+    uart_send_hex(cmd);
     uart_send_string("\r\n");
 
     /* Test ecriture/lecture sur registre Command (0x01) - writable */
@@ -106,9 +106,9 @@ int main(void)
     for (volatile int j = 0; j < 5000; j++) { }
     RC522_CS_HIGH();
 
-    uart_send_string("Write 0xAA, Read: 0x");
-    uart_send_int(val);
-    uart_send_string("\r\n");
+uart_send_string("Write 0xAA, Read: ");
+        uart_send_hex(val);
+        uart_send_string("\r\n");
 
     if (val == 0xAA) {
         uart_send_string("SPI OK!\r\n");
