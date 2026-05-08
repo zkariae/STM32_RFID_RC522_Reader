@@ -13,11 +13,17 @@
  * MACROS PRIVÉES
  * ============================================================================ */
 
-/** @brief Bit pour lecture (addr pair) */
-#define RC522_READ_BIT             0x80
+/**
+ * @brief Adresse SPI pour lecture: bit 7=1, bits 6-0 = register address
+ *        Format: 0x80 | addr
+ */
+#define RC522_READ_ADDR(addr)      ((addr) | 0x80)
 
-/** @brief Bit pour écriture (addr impair) */
-#define RC522_WRITE_BIT           0x00
+/**
+ * @brief Adresse SPI pour écriture: bit 7=0, bits 6-0 = register address
+ *        Format: 0x00 | addr
+ */
+#define RC522_WRITE_ADDR(addr)     ((addr) | 0x00)
 
 /* ============================================================================
  * VARIABLES STATIQUES
@@ -35,10 +41,13 @@ static uint8_t _error_code = 0;
 static void rc522_write_reg(uint8_t addr, uint8_t value)
 {
     RC522_CS_LOW();
+    for (volatile int i = 0; i < 1000; i++) { }
+    spi_transfer(RC522_WRITE_ADDR(addr));
     for (volatile int i = 0; i < 500; i++) { }
-    spi_transfer(addr | RC522_WRITE_BIT);
     spi_transfer(value);
+    for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
+    for (volatile int i = 0; i < 5000; i++) { }
 }
 
 /**
@@ -48,10 +57,13 @@ static uint8_t rc522_read_reg(uint8_t addr)
 {
     uint8_t value;
     RC522_CS_LOW();
+    for (volatile int i = 0; i < 1000; i++) { }
+    spi_transfer(RC522_READ_ADDR(addr));
     for (volatile int i = 0; i < 500; i++) { }
-    spi_transfer(addr | RC522_READ_BIT);
     value = spi_transfer(0x00);
+    for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
+    for (volatile int i = 0; i < 5000; i++) { }
     return value;
 }
 
@@ -72,23 +84,29 @@ static void rc522_set_bits(uint8_t addr, uint8_t mask, uint8_t value)
 static void rc522_write_fifo(const uint8_t *data, uint8_t len)
 {
     RC522_CS_LOW();
-    for (volatile int i = 0; i < 200; i++) { }
-    spi_transfer(RC522_REG_FIFO_DATA | RC522_WRITE_BIT);
+    for (volatile int i = 0; i < 1000; i++) { }
+    spi_transfer(RC522_WRITE_ADDR(RC522_REG_FIFO_DATA));
     for (uint8_t i = 0; i < len; i++) {
+        for (volatile int j = 0; j < 500; j++) { }
         spi_transfer(data[i]);
     }
+    for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
+    for (volatile int i = 0; i < 5000; i++) { }
 }
 
 static void rc522_read_fifo(uint8_t *data, uint8_t len)
 {
     RC522_CS_LOW();
-    for (volatile int i = 0; i < 200; i++) { }
-    spi_transfer(RC522_REG_FIFO_DATA | RC522_READ_BIT);
+    for (volatile int i = 0; i < 1000; i++) { }
+    spi_transfer(RC522_READ_ADDR(RC522_REG_FIFO_DATA));
     for (uint8_t i = 0; i < len; i++) {
+        for (volatile int j = 0; j < 500; j++) { }
         data[i] = spi_transfer(0x00);
     }
+    for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
+    for (volatile int i = 0; i < 5000; i++) { }
 }
 
 static uint8_t rc522_fifo_count(void)
@@ -181,11 +199,12 @@ RC522_Status rfid_rc522_init(void)
 {
     rfid_rc522_reset();
 
-    for (volatile int i = 0; i < 100000; i++) { }
+    for (volatile int i = 0; i < 200000; i++) { }
 
     uint8_t version = rfid_rc522_get_version();
     LOG_DEBUG_INT("version", version);
 
+    /* Accept version 0x00, 0x80, 0x88, 0x90 */
     if (version != 0x80 && version != 0x88 && version != 0x90 && version != 0x00) {
         LOG_ERROR("RC522 non detecte");
         return RC522_STATUS_ERROR;
@@ -193,16 +212,20 @@ RC522_Status rfid_rc522_init(void)
 
     LOG_INFO("RC522 detecte");
 
+    /* Configuration du timer */
     rc522_write_reg(0x2A, 0x03);
     rc522_write_reg(0x2B, 0x00);
     rc522_write_reg(0x2C, 0x30);
 
+    /* Configuration ASK 100% */
     rc522_set_bits(RC522_REG_TX_ASK, 0x40, 0x40);
 
+    /* Configuration CRC */
     rc522_write_reg(RC522_REG_TX_CRC_INIT0, 0x63);
     rc522_write_reg(RC522_REG_TX_CRC_INIT1, 0x63);
     rc522_write_reg(RC522_REG_RX_CRC_PSEL, 0x00);
 
+    /* Active l'antenne */
     rfid_rc522_antenna_on();
 
     LOG_INFO("RC522 initialise");
