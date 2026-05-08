@@ -6,6 +6,7 @@
 
 #include "rfid_rc522.h"
 #include "log.h"
+#include "spi.h"
 #include <libopencm3/stm32/gpio.h>
 #include <stddef.h>
 
@@ -42,9 +43,9 @@ static void rc522_write_reg(uint8_t addr, uint8_t value)
 {
     RC522_CS_LOW();
     for (volatile int i = 0; i < 1000; i++) { }
-    spi_transfer(RC522_WRITE_ADDR(addr));
+    rc522_spi_write(RC522_WRITE_ADDR(addr));
     for (volatile int i = 0; i < 500; i++) { }
-    spi_transfer(value);
+    rc522_spi_write(value);
     for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
     for (volatile int i = 0; i < 5000; i++) { }
@@ -58,9 +59,9 @@ static uint8_t rc522_read_reg(uint8_t addr)
     uint8_t value;
     RC522_CS_LOW();
     for (volatile int i = 0; i < 1000; i++) { }
-    spi_transfer(RC522_READ_ADDR(addr));
+    rc522_spi_write(RC522_READ_ADDR(addr));
     for (volatile int i = 0; i < 500; i++) { }
-    value = spi_transfer(0x00);
+    value = rc522_spi_read();
     for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
     for (volatile int i = 0; i < 5000; i++) { }
@@ -85,10 +86,10 @@ static void rc522_write_fifo(const uint8_t *data, uint8_t len)
 {
     RC522_CS_LOW();
     for (volatile int i = 0; i < 1000; i++) { }
-    spi_transfer(RC522_WRITE_ADDR(RC522_REG_FIFO_DATA));
+    rc522_spi_write(RC522_WRITE_ADDR(RC522_REG_FIFO_DATA));
     for (uint8_t i = 0; i < len; i++) {
         for (volatile int j = 0; j < 500; j++) { }
-        spi_transfer(data[i]);
+        rc522_spi_write(data[i]);
     }
     for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
@@ -99,10 +100,10 @@ static void rc522_read_fifo(uint8_t *data, uint8_t len)
 {
     RC522_CS_LOW();
     for (volatile int i = 0; i < 1000; i++) { }
-    spi_transfer(RC522_READ_ADDR(RC522_REG_FIFO_DATA));
+    rc522_spi_write(RC522_READ_ADDR(RC522_REG_FIFO_DATA));
     for (uint8_t i = 0; i < len; i++) {
         for (volatile int j = 0; j < 500; j++) { }
-        data[i] = spi_transfer(0x00);
+        data[i] = rc522_spi_read();
     }
     for (volatile int i = 0; i < 1000; i++) { }
     RC522_CS_HIGH();
@@ -155,17 +156,26 @@ static RC522_Status rc522_transceive(uint8_t cmd,
 
     rc522_write_reg(RC522_REG_COMMAND, cmd);
 
+    LOG_DEBUG("Command sent");
+
     if (cmd == RC522_PCD_TRANSCEIVE) {
         rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
     }
 
+    LOG_DEBUG("Starting wait loop");
     timeout = 10000;
     do {
         irq = rc522_read_reg(RC522_REG_COMM_IRQ);
         timeout--;
     } while (!(irq & wait_irq) && timeout);
+    
+    LOG_DEBUG_INT("Wait done, IRQ", irq);
 
+    LOG_DEBUG_INT("IRQ final", irq);
+    LOG_DEBUG_INT("Timeout", timeout);
+    
     _error_code = rc522_read_reg(RC522_REG_ERROR);
+    LOG_DEBUG_INT("Error", _error_code);
     if (_error_code & 0x13) {
         return RC522_STATUS_ERROR;
     }
@@ -204,8 +214,8 @@ RC522_Status rfid_rc522_init(void)
     uint8_t version = rfid_rc522_get_version();
     LOG_DEBUG_INT("version", version);
 
-    /* Accept version 0x00, 0x80, 0x88, 0x90 */
-    if (version != 0x80 && version != 0x88 && version != 0x90 && version != 0x00) {
+    /* Accept version 0x00, 0x80, 0x88, 0x90, 0xC0 */
+    if (version != 0x80 && version != 0x88 && version != 0x90 && version != 0x00 && version != 0xC0) {
         LOG_ERROR("RC522 non detecte");
         return RC522_STATUS_ERROR;
     }
@@ -263,6 +273,7 @@ RC522_Status rfid_rc522_request(uint8_t *atqa)
     uint8_t recv_data[4];
     RC522_Status status;
 
+    /* Config RxMode */
     rc522_write_reg(RC522_REG_RX_MODE, 0x07);
 
     send_data[0] = PICC_CMD_REQA;
@@ -270,9 +281,11 @@ RC522_Status rfid_rc522_request(uint8_t *atqa)
 
     rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
 
+    LOG_DEBUG("Sending REQA");
     status = rc522_transceive(RC522_PCD_TRANSCEIVE,
                                send_data, 1,
                                recv_data, 2);
+    LOG_DEBUG_INT("transceive status", status);
 
     if (status == RC522_STATUS_OK) {
         atqa[0] = recv_data[0];
