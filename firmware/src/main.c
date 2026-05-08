@@ -104,24 +104,28 @@ static uint8_t state_verify(void)
  */
 static uint8_t state_idle(void)
 {
-    uart_send_string("\r\n=== STATE: IDLE ===\r\n");
-    uart_send_string("[IDLE] Waiting for card...\r\n");
+    /* Only print state occasionally to avoid flooding */
+    static uint8_t counter = 0;
+    counter++;
+    if (counter > 10) {
+        uart_send_string(".\r\n");
+        counter = 0;
+    }
 
     uint8_t atqa[2];
     RC522_Status status = rfid_rc522_request(atqa);
     
     if (status == RC522_STATUS_OK) {
-        uart_send_string("[IDLE] Card detected!\r\n");
+        uart_send_string("\r\n[IDLE] Card detected!\r\n");
         uart_send_string("[IDLE] ATQA: ");
         uart_send_hex(atqa[0]);
         uart_send_string(" ");
         uart_send_hex(atqa[1]);
         uart_send_string("\r\n");
         return 1;
-    } else {
-        uart_send_string("[IDLE] No card present\r\n");
-        return 0;
     }
+    
+    return 0;
 }
 
 /**
@@ -136,6 +140,12 @@ static void state_streaming(void)
     RC522_Status status = rfid_rc522_anticoll(&current_uid);
     
     if (status == RC522_STATUS_OK) {
+        /* Small delay before select */
+        for (volatile int i = 0; i < 1000; i++) { }
+        
+        /* Perform SELECT to get SAK */
+        status = rfid_rc522_select(&current_uid);
+        
         uart_send_string("[STREAM] UID: ");
         for (int i = 0; i < current_uid.size; i++) {
             uart_send_hex(current_uid.uid[i]);
@@ -147,11 +157,18 @@ static void state_streaming(void)
         uart_send_int(current_uid.size);
         uart_send_string(" bytes\r\n");
         
-        uart_send_string("[STREAM] SAK: ");
-        uart_send_hex(current_uid.sak);
+        uart_send_string("[STREAM] Select status: ");
+        uart_send_hex(status);
         uart_send_string("\r\n");
         
-        card_detected = 1;
+        if (status == RC522_STATUS_OK) {
+            uart_send_string("[STREAM] SAK: ");
+            uart_send_hex(current_uid.sak);
+            uart_send_string("\r\n");
+            card_detected = 1;
+        } else {
+            uart_send_string("[STREAM] Failed to select card\r\n");
+        }
     } else {
         uart_send_string("[STREAM] Failed to read UID\r\n");
     }
