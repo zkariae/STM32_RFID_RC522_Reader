@@ -5,3 +5,6 @@ guide_IA.md
 Drivers/libopencm3/lib/
 Drivers/libopencm3/**/*.o
 Drivers/libopencm3/**/*.a
+# OpenCode / OAC
+.opencode/
+.tmp/
