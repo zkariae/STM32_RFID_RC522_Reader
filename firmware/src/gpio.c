@@ -1,13 +1,12 @@
 /**
  * @file gpio.c
- * @brief Driver GPIO — USART2 (PA2/PA3) et SPI2 (PB13-15) via libopencm3.
+ * @brief Driver GPIO — USART2 (PA2/PA3) et SPI2 (PB13-15, PB4).
  */
 
 #include "gpio.h"
 
 /**
  * @brief Initialise les broches GPIO pour USART2 et SPI2.
- * @pre   À appeler avant uart_init() et spi_driver_init().
  */
 void gpio_driver_init(void)
 {
@@ -18,7 +17,7 @@ void gpio_driver_init(void)
     gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO2 | GPIO3);
     gpio_set_af(GPIOA, GPIO_AF7, GPIO2 | GPIO3);
 
-    /* PB4 (NSS) — sortie push-pull, idle HIGH (RC522 désélectionné) */
+    /* PB4 (NSS) — sortie push-pull */
     gpio_mode_setup(GPIOB, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO4);
     gpio_set_output_options(GPIOB, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO4);
     gpio_set(GPIOB, GPIO4);
