@@ -2,101 +2,123 @@
 #include "uart.h"
 #include "systick.h"
 #include "log.h"
-#include "rfid_rc522.h"
-
-/* Cle par defaut pour MIFARE Classic (FFFFFFFFFFFF) */
-static const RC522_Key default_key = {
-    .key = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-};
+#include "spi.h"
 
 int main(void)
 {
-    RC522_Status status;
-
     systick_init();
     gpio_driver_init();
     uart_init();
     spi_driver_init();
 
-    uart_send_string("=== STM32F407 RFID RC522 ===\r\n");
+    uart_send_string("=== Test Lecture Multiple ===\r\n");
 
-    /* Initialise le RC522 */
-    status = rfid_rc522_init();
-    if (status != RC522_STATUS_OK) {
-        uart_send_string("Echec init RC522\r\n");
-        while (1) { }
+    /* Reset RC522 - delai plus long pour initialization */
+    RC522_CS_HIGH();
+    for (volatile int i = 0; i < 100000; i++) { }
+    RC522_CS_LOW();
+    for (volatile int i = 0; i < 10000; i++) { }
+    RC522_CS_HIGH();
+    for (volatile int i = 0; i < 500000; i++) { }  /* Delai plus long pour RC522 pret */
+
+    /* Lecture version 5 fois pour verifier la stabilite */
+    uart_send_string("Lecture version 5 fois:\r\n");
+    for (int i = 0; i < 5; i++) {
+        RC522_CS_LOW();
+        for (volatile int j = 0; j < 5000; j++) { }
+        spi_transfer(0x80 | 0x37);
+        for (volatile int j = 0; j < 1000; j++) { }
+        uint8_t v = spi_transfer(0x00);
+        for (volatile int j = 0; j < 5000; j++) { }
+        RC522_CS_HIGH();
+        for (volatile int j = 0; j < 5000; j++) { }  /* Delai entre transfers */
+
+        uart_send_string("Essai ");
+        uart_send_int(i + 1);
+        uart_send_string(": 0x");
+        uart_send_int(v);
+        uart_send_string("\r\n");
+
+        for (volatile int j = 0; j < 100000; j++) { }
     }
 
-    uart_send_string("RC522 pret!\r\n");
-    uart_send_string("Approchez une carte...\r\n");
+    /* Lecture autres registres pour comparaison */
+    uart_send_string("\r\nLecture autres registres:\r\n");
 
-    while (1) {
-        /* Detection de carte */
-        uint8_t atqa[2];
-        status = rfid_rc522_request(atqa);
+    /* FIFO Level (0x0A) */
+    RC522_CS_LOW();
+    for (volatile int j = 0; j < 5000; j++) { }
+    spi_transfer(0x80 | 0x0A);
+    for (volatile int j = 0; j < 1000; j++) { }
+    uint8_t fifo = spi_transfer(0x00);
+    for (volatile int j = 0; j < 5000; j++) { }
+    RC522_CS_HIGH();
+    for (volatile int j = 0; j < 20000; j++) { }
+    uart_send_string("FIFO Level (0x0A): 0x");
+    uart_send_int(fifo);
+    uart_send_string("\r\n");
 
-        if (status == RC522_STATUS_OK) {
-            uart_send_string("Carte detectee\r\n");
+    /* Status 2 (0x08) */
+    RC522_CS_LOW();
+    for (volatile int j = 0; j < 5000; j++) { }
+    spi_transfer(0x80 | 0x08);
+    for (volatile int j = 0; j < 1000; j++) { }
+    uint8_t status2 = spi_transfer(0x00);
+    for (volatile int j = 0; j < 5000; j++) { }
+    RC522_CS_HIGH();
+    for (volatile int j = 0; j < 20000; j++) { }
+    uart_send_string("Status 2 (0x08): 0x");
+    uart_send_int(status2);
+    uart_send_string("\r\n");
 
-            /* Anti-collision */
-            RC522_UID uid;
-            status = rfid_rc522_anticoll(&uid);
+    /* Command (0x01) - should be 0x00 after reset */
+    RC522_CS_LOW();
+    for (volatile int j = 0; j < 5000; j++) { }
+    spi_transfer(0x80 | 0x01);
+    for (volatile int j = 0; j < 1000; j++) { }
+    uint8_t cmd = spi_transfer(0x00);
+    for (volatile int j = 0; j < 5000; j++) { }
+    RC522_CS_HIGH();
+    for (volatile int j = 0; j < 20000; j++) { }
+    uart_send_string("Command (0x01): 0x");
+    uart_send_int(cmd);
+    uart_send_string("\r\n");
 
-            if (status == RC522_STATUS_OK) {
-                uart_send_string("UID: ");
-                for (int i = 0; i < uid.size; i++) {
-                    uint8_t val = uid.uid[i];
-                    uart_send_string("0x");
-                    uart_send_int(val);
-                    uart_send_string(" ");
-                }
-                uart_send_string("\r\n");
+    /* Test ecriture/lecture sur registre Command (0x01) - writable */
+    uart_send_string("\r\nTest write/read Command (0x01):\r\n");
 
-                /* Selection */
-                status = rfid_rc522_select(&uid);
-                if (status == RC522_STATUS_OK) {
-                    uart_send_string("SAK: ");
-                    uart_send_int(uid.sak);
-                    uart_send_string("\r\n");
+    /* Ecrire 0x05 dans Command (bit 2 = idle) */
+    RC522_CS_LOW();
+    for (volatile int j = 0; j < 5000; j++) { }
+    spi_transfer(0x01);  /* Write to 0x01 */
+    for (volatile int j = 0; j < 1000; j++) { }
+    spi_transfer(0x05);
+    for (volatile int j = 0; j < 5000; j++) { }
+    RC522_CS_HIGH();
+    for (volatile int j = 0; j < 20000; j++) { }
 
-                    /* Verifie Crypto1 status */
-                    uint8_t crypto = rfid_rc522_get_crypto_status();
-                    uart_send_string("Crypto: ");
-                    uart_send_int(crypto);
-                    uart_send_string("\r\n");
+    /* Lire Command */
+    RC522_CS_LOW();
+    for (volatile int j = 0; j < 5000; j++) { }
+    spi_transfer(0x80 | 0x01);
+    for (volatile int j = 0; j < 1000; j++) { }
+    uint8_t val = spi_transfer(0x00);
+    for (volatile int j = 0; j < 5000; j++) { }
+    RC522_CS_HIGH();
 
-                    /* Authentification et lecture du bloc 0 */
-                    status = rfid_rc522_auth(0, PICC_CMD_MIFARE_AUTH_KEY_A, &default_key, &uid);
-                    if (status == RC522_STATUS_OK) {
-                        uart_send_string("Auth OK\r\n");
+    uart_send_string("Write 0xAA, Read: 0x");
+    uart_send_int(val);
+    uart_send_string("\r\n");
 
-                        uint8_t block_data[16];
-                        status = rfid_rc522_read_block(0, block_data);
-                        if (status == RC522_STATUS_OK) {
-                            uart_send_string("Bloc 0 lu:\r\n");
-                            for (int i = 0; i < 16; i++) {
-                                uart_send_int(block_data[i]);
-                                uart_send_string(" ");
-                                if (i == 7) uart_send_string("\r\n");
-                            }
-                            uart_send_string("\r\n");
-                        } else {
-                            uart_send_string("Erreur lecture\r\n");
-                        }
-                    } else {
-                        uart_send_string("Erreur auth\r\n");
-                    }
-                } else {
-                    uart_send_string("Erreur select\r\n");
-                }
-            }
-
-            rfid_rc522_halt();
-        }
-
-        /* Delai */
-        for (volatile int i = 0; i < 500000; i++) { }
+    if (val == 0xAA) {
+        uart_send_string("SPI OK!\r\n");
+    } else {
+        uart_send_string("SPI Erreur!\r\n");
     }
+
+    uart_send_string("\r\nFini\r\n");
+
+    while (1) { }
 
     return 0;
 }
