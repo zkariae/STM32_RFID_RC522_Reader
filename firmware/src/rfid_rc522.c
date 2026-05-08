@@ -167,15 +167,23 @@ static RC522_Status rc522_transceive(uint8_t cmd,
     do {
         irq = rc522_read_reg(RC522_REG_COMM_IRQ);
         timeout--;
+        if (timeout % 2000 == 0) {
+            LOG_DEBUG_INT("Timeout", timeout);
+            LOG_DEBUG_INT("IRQ", irq);
+        }
     } while (!(irq & wait_irq) && timeout);
     
-    LOG_DEBUG_INT("Wait done, IRQ", irq);
-
-    LOG_DEBUG_INT("IRQ final", irq);
-    LOG_DEBUG_INT("Timeout", timeout);
+LOG_DEBUG_INT("Wait done, IRQ", irq);
+    LOG_DEBUG_INT("Timeout final", timeout);
+    LOG_DEBUG_INT("wait_irq expected", wait_irq);
     
     _error_code = rc522_read_reg(RC522_REG_ERROR);
     LOG_DEBUG_INT("Error", _error_code);
+    
+    if (timeout == 0) {
+        LOG_DEBUG("Timeout - returning TIMEOUT");
+        return RC522_STATUS_TIMEOUT;
+    }
     if (_error_code & 0x13) {
         return RC522_STATUS_ERROR;
     }
@@ -214,8 +222,8 @@ RC522_Status rfid_rc522_init(void)
     uint8_t version = rfid_rc522_get_version();
     LOG_DEBUG_INT("version", version);
 
-    /* Accept version 0x00, 0x80, 0x88, 0x90, 0xC0 */
-    if (version != 0x80 && version != 0x88 && version != 0x90 && version != 0x00 && version != 0xC0) {
+    /* Accept version 0x00, 0x80, 0x88, 0x90, 0xC0, 0xC4 */
+    if (version != 0x80 && version != 0x88 && version != 0x90 && version != 0x00 && version != 0xC0 && version != 0xC4) {
         LOG_ERROR("RC522 non detecte");
         return RC522_STATUS_ERROR;
     }
