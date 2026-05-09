@@ -35,6 +35,7 @@ void spi_driver_init(void)
 void rc522_spi_write(uint8_t data)
 {
     spi_xfer(SPI2, data);
+    for (volatile int i = 0; i < 5; i++) { }
 }
 
 /**
@@ -43,6 +44,7 @@ void rc522_spi_write(uint8_t data)
 uint8_t rc522_spi_read(void)
 {
     uint8_t result = spi_xfer(SPI2, 0x00);
+    for (volatile int i = 0; i < 5; i++) { }
     return result;
 }
 
