@@ -262,6 +262,16 @@ RC522_Status rfid_rc522_request(uint8_t *atqa)
     uint8_t recv_data[4];
     RC522_Status status;
 
+    /* Reset RC522 state before request */
+    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rc522_clear_fifo();
+    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
+    rc522_write_reg(RC522_REG_ERROR, 0x00);
+    
+    /* Small delay for RC522 to settle */
+    for (volatile int i = 0; i < 500; i++) { }
+
     /* Config RxMode */
     rc522_write_reg(RC522_REG_RX_MODE, 0x07);
 
@@ -293,13 +303,19 @@ RC522_Status rfid_rc522_anticoll(RC522_UID *uid)
         uid->uid[i] = 0;
     }
 
-    /* Reset RC522 state before anticollision */
+    /* Thorough reset of RC522 state before anticollision */
     rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
     rc522_clear_fifo();
     rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
     rc522_write_reg(RC522_REG_ERROR, 0x00);
     
+    /* Reset CRC and mode registers */
     rc522_write_reg(RC522_REG_RX_MODE, 0x00);
+    rc522_write_reg(RC522_REG_TX_MODE, 0x00);
+    
+    /* Small delay for RC522 to settle */
+    for (volatile int i = 0; i < 500; i++) { }
 
     send_data[0] = PICC_CMD_ANTICOLL_1;
     send_data[1] = 0x20;  /* NVB: 2 bytes */
