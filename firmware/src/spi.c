@@ -15,9 +15,9 @@ void spi_driver_init(void)
 {
     rcc_periph_clock_enable(RCC_SPI2);
 
-    /* SPI2: Mode 1 (CPOL=1, CPHA=0), Master, 8 bits, MSB first, ~0.65MHz (DIV_128) */
+    /* SPI2: Mode 1 (CPOL=1, CPHA=0), Master, 8 bits, MSB first, ~1.3MHz (DIV_64) */
     spi_init_master(SPI2,
-                    SPI_CR1_BAUDRATE_FPCLK_DIV_128,  /* ~0.65 MHz - plus lent */
+                    SPI_CR1_BAUDRATE_FPCLK_DIV_64,  /* ~1.3 MHz */
                     SPI_CR1_CPOL_CLK_TO_1_WHEN_IDLE,  /* CPOL = 1 */
                     SPI_CR1_CPHA_CLK_TRANSITION_1,    /* CPHA = 0 */
                     SPI_CR1_DFF_8BIT,
@@ -35,8 +35,6 @@ void spi_driver_init(void)
 void rc522_spi_write(uint8_t data)
 {
     spi_xfer(SPI2, data);
-    /* Delai pour RC522 */
-    for (volatile int i = 0; i < 10; i++) { }
 }
 
 /**
@@ -45,8 +43,6 @@ void rc522_spi_write(uint8_t data)
 uint8_t rc522_spi_read(void)
 {
     uint8_t result = spi_xfer(SPI2, 0x00);
-    /* Delai pour RC522 */
-    for (volatile int i = 0; i < 10; i++) { }
     return result;
 }
 
