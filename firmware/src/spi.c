@@ -15,9 +15,9 @@ void spi_driver_init(void)
 {
     rcc_periph_clock_enable(RCC_SPI2);
 
-    /* SPI2: Mode 1 (CPOL=1, CPHA=0), Master, 8 bits, MSB first, ~1.3MHz (DIV_64) */
+    /* SPI2: Mode 1 (CPOL=1, CPHA=0), Master, 8 bits, MSB first, ~0.65MHz (DIV_128) */
     spi_init_master(SPI2,
-                    SPI_CR1_BAUDRATE_FPCLK_DIV_64,  /* ~1.3 MHz */
+                    SPI_CR1_BAUDRATE_FPCLK_DIV_128,  /* ~0.65 MHz */
                     SPI_CR1_CPOL_CLK_TO_1_WHEN_IDLE,  /* CPOL = 1 */
                     SPI_CR1_CPHA_CLK_TRANSITION_1,    /* CPHA = 0 */
                     SPI_CR1_DFF_8BIT,
