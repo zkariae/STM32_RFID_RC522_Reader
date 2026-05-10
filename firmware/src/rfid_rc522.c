@@ -285,6 +285,11 @@ RC522_Status rfid_rc522_request(uint8_t *atqa)
                                recv_data, 2);
 
     if (status == RC522_STATUS_OK) {
+        /* Validate ATQA - reject invalid responses */
+        if ((recv_data[0] == 0xFF && recv_data[1] == 0xFF) ||
+            (recv_data[0] == 0x00 && recv_data[1] == 0x00)) {
+            return RC522_STATUS_ERROR;
+        }
         atqa[0] = recv_data[0];
         atqa[1] = recv_data[1];
     }
@@ -328,6 +333,25 @@ RC522_Status rfid_rc522_anticoll(RC522_UID *uid)
                                recv_data, 12);
 
     if (status == RC522_STATUS_OK) {
+        /* Log ERROR register for debugging */
+        uint8_t error = rc522_read_reg(RC522_REG_ERROR);
+        uart_send_string("[ANTICOLL] Error: ");
+        uart_send_hex(error);
+        uart_send_string("\r\n");
+        
+        /* Check for collision */
+        if (error & 0x01) {
+            uart_send_string("[ANTICOLL] Collision!\r\n");
+            return RC522_STATUS_COLLISION;
+        }
+        
+        /* Validate UID - reject 0xFF which indicates invalid data */
+        if (recv_data[0] == 0xFF && recv_data[1] == 0xFF && 
+            recv_data[2] == 0xFF && recv_data[3] == 0xFF) {
+            uart_send_string("[ANTICOLL] Invalid UID (all 0xFF)\r\n");
+            return RC522_STATUS_ERROR;
+        }
+        
         /* Data is already in recv_data from transceive */
         /* First byte is UID bytes, 5th byte is BCC */
         uid->size = 4;
