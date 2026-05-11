@@ -275,4 +275,18 @@ uint8_t rfid_rc522_get_error(void);
  */
 uint8_t rfid_rc522_get_crypto_status(void);
 
+/**
+ * @brief Écrit un octet dans un registre du RC522.
+ * @param addr Adresse du registre.
+ * @param value Valeur à écrire.
+ */
+void rfid_rc522_write_reg(uint8_t addr, uint8_t value);
+
+/**
+ * @brief Lit un octet depuis un registre du RC522.
+ * @param addr Adresse du registre.
+ * @return Valeur lue.
+ */
+uint8_t rfid_rc522_read_reg(uint8_t addr);
+
 #endif /* RFID_RC522_H */
