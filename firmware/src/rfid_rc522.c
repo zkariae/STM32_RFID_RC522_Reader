@@ -15,16 +15,16 @@
  * ============================================================================ */
 
 /**
- * @brief Adresse SPI pour lecture: bit 7=1, bits 6-0 = register address
- *        Format: 0x80 | addr
+ * @brief Adresse SPI pour lecture: bit 7=1, bit 6=1, bits 5-0 = register address
+ *        Format: (addr << 1) | 0x80
  */
-#define RC522_READ_ADDR(addr)      ((addr) | 0x80)
+#define RC522_READ_ADDR(addr)      (((addr << 1) & 0x7E) | 0x80)
 
 /**
- * @brief Adresse SPI pour écriture: bit 7=0, bits 6-0 = register address
- *        Format: 0x00 | addr
+ * @brief Adresse SPI pour écriture: bit 7=0, bit 6=0, bits 5-0 = register address
+ *        Format: (addr << 1) | 0x00
  */
-#define RC522_WRITE_ADDR(addr)     ((addr) | 0x00)
+#define RC522_WRITE_ADDR(addr)     ((addr << 1) & 0x7E)
 
 /* ============================================================================
  * VARIABLES STATIQUES
@@ -39,32 +39,32 @@ static uint8_t _error_code = 0;
 /**
  * @brief Écrit un octet dans un registre du RC522.
  */
-static void rc522_write_reg(uint8_t addr, uint8_t value)
+void rfid_rc522_write_reg(uint8_t addr, uint8_t value)
 {
     RC522_CS_LOW();
-    for (volatile int i = 0; i < 1000; i++) { }
+    for (volatile int i = 0; i < 2000; i++) { }
     rc522_spi_write(RC522_WRITE_ADDR(addr));
-    for (volatile int i = 0; i < 500; i++) { }
-    rc522_spi_write(value);
     for (volatile int i = 0; i < 1000; i++) { }
+    rc522_spi_write(value);
+    for (volatile int i = 0; i < 2000; i++) { }
     RC522_CS_HIGH();
-    for (volatile int i = 0; i < 5000; i++) { }
+    for (volatile int i = 0; i < 10000; i++) { }
 }
 
 /**
  * @brief Lit un octet depuis un registre du RC522.
  */
-static uint8_t rc522_read_reg(uint8_t addr)
+uint8_t rfid_rc522_read_reg(uint8_t addr)
 {
     uint8_t value;
     RC522_CS_LOW();
-    for (volatile int i = 0; i < 1000; i++) { }
+    for (volatile int i = 0; i < 2000; i++) { }
     rc522_spi_write(RC522_READ_ADDR(addr));
-    for (volatile int i = 0; i < 500; i++) { }
-    value = rc522_spi_read();
     for (volatile int i = 0; i < 1000; i++) { }
+    value = rc522_spi_read();
+    for (volatile int i = 0; i < 2000; i++) { }
     RC522_CS_HIGH();
-    for (volatile int i = 0; i < 5000; i++) { }
+    for (volatile int i = 0; i < 10000; i++) { }
     return value;
 }
 
@@ -73,9 +73,9 @@ static uint8_t rc522_read_reg(uint8_t addr)
  */
 static void rc522_set_bits(uint8_t addr, uint8_t mask, uint8_t value)
 {
-    uint8_t tmp = rc522_read_reg(addr);
+    uint8_t tmp = rfid_rc522_read_reg(addr);
     tmp = (tmp & ~mask) | value;
-    rc522_write_reg(addr, tmp);
+    rfid_rc522_write_reg(addr, tmp);
 }
 
 /* ============================================================================
@@ -112,7 +112,7 @@ static void rc522_read_fifo(uint8_t *data, uint8_t len)
 
 static uint8_t rc522_fifo_count(void)
 {
-    return rc522_read_reg(RC522_REG_FIFO_LEVEL) & 0x7F;
+    return rfid_rc522_read_reg(RC522_REG_FIFO_LEVEL) & 0x7F;
 }
 
 static void rc522_clear_fifo(void)
@@ -145,24 +145,26 @@ static RC522_Status rc522_transceive(uint8_t cmd,
             break;
     }
 
-    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rfid_rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
     rc522_clear_fifo();
 
     if (send_len > 0) {
         rc522_write_fifo(send_data, send_len);
     }
 
-    rc522_write_reg(RC522_REG_COMMAND, cmd);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, cmd);
 
+    /* StartSend bit should be set AFTER command (per reference) */
     if (cmd == RC522_PCD_TRANSCEIVE) {
-        rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
+        uint8_t current = rfid_rc522_read_reg(RC522_REG_BIT_FRAMING);
+        rfid_rc522_write_reg(RC522_REG_BIT_FRAMING, current | 0x80);  // StartSend=1
     }
 
     timeout = 10000;
     do {
-        irq = rc522_read_reg(RC522_REG_COMM_IRQ);
+        irq = rfid_rc522_read_reg(RC522_REG_COMM_IRQ);
         timeout--;
     } while (!(irq & wait_irq) && timeout);
     
@@ -174,7 +176,7 @@ static RC522_Status rc522_transceive(uint8_t cmd,
     }
 
     if (irq & 0x01) {
-        rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+        rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
     }
 
     if (cmd == RC522_PCD_TRANSCEIVE && recv_len > 0) {
@@ -203,8 +205,10 @@ RC522_Status rfid_rc522_init(void)
     uint8_t version = rfid_rc522_get_version();
     LOG_DEBUG_INT("version", version);
 
-    /* Accept version 0x00, 0x80, 0x88, 0x90, 0xC0, 0xC4 */
-    if (version != 0x80 && version != 0x88 && version != 0x90 && version != 0x00 && version != 0xC0 && version != 0xC4) {
+    /* Accept version 0x00, 0x80, 0x88, 0x90, 0x91, 0x92, 0xC0, 0xC4 */
+    if (version != 0x80 && version != 0x88 && version != 0x90 && 
+        version != 0x91 && version != 0x92 && version != 0x00 && 
+        version != 0xC0 && version != 0xC4) {
         LOG_ERROR("RC522 non detecte");
         return RC522_STATUS_ERROR;
     }
@@ -212,17 +216,17 @@ RC522_Status rfid_rc522_init(void)
     LOG_INFO("RC522 detecte");
 
     /* Configuration du timer */
-    rc522_write_reg(0x2A, 0x03);
-    rc522_write_reg(0x2B, 0x00);
-    rc522_write_reg(0x2C, 0x30);
+    rfid_rc522_write_reg(0x2A, 0x03);
+    rfid_rc522_write_reg(0x2B, 0x00);
+    rfid_rc522_write_reg(0x2C, 0x30);
 
     /* Configuration ASK 100% */
     rc522_set_bits(RC522_REG_TX_ASK, 0x40, 0x40);
 
     /* Configuration CRC */
-    rc522_write_reg(RC522_REG_TX_CRC_INIT0, 0x63);
-    rc522_write_reg(RC522_REG_TX_CRC_INIT1, 0x63);
-    rc522_write_reg(RC522_REG_RX_CRC_PSEL, 0x00);
+    rfid_rc522_write_reg(RC522_REG_TX_CRC_INIT0, 0x63);
+    rfid_rc522_write_reg(RC522_REG_TX_CRC_INIT1, 0x63);
+    rfid_rc522_write_reg(RC522_REG_RX_CRC_PSEL, 0x00);
 
     /* Active l'antenne */
     rfid_rc522_antenna_on();
@@ -233,13 +237,13 @@ RC522_Status rfid_rc522_init(void)
 
 void rfid_rc522_reset(void)
 {
-    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_RESET);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_RESET);
     for (volatile int i = 0; i < 10000; i++) { }
 }
 
 RC522_Status rfid_rc522_antenna_on(void)
 {
-    uint8_t val = rc522_read_reg(RC522_REG_TX_CONTROL);
+    uint8_t val = rfid_rc522_read_reg(RC522_REG_TX_CONTROL);
     if ((val & 0x03) != 0x03) {
         rc522_set_bits(RC522_REG_TX_CONTROL, 0x03, 0x03);
     }
@@ -253,7 +257,7 @@ void rfid_rc522_antenna_off(void)
 
 uint8_t rfid_rc522_get_version(void)
 {
-    return rc522_read_reg(RC522_REG_VERSION);
+    return rfid_rc522_read_reg(RC522_REG_VERSION);
 }
 
 RC522_Status rfid_rc522_request(uint8_t *atqa)
@@ -263,17 +267,17 @@ RC522_Status rfid_rc522_request(uint8_t *atqa)
     RC522_Status status;
 
     /* Reset RC522 state before request */
-    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
     rc522_clear_fifo();
-    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_ERROR, 0x00);
+    rfid_rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_ERROR, 0x00);
     
     /* Small delay for RC522 to settle */
     for (volatile int i = 0; i < 500; i++) { }
 
     /* Config RxMode */
-    rc522_write_reg(RC522_REG_RX_MODE, 0x07);
+    rfid_rc522_write_reg(RC522_REG_RX_MODE, 0x07);
 
     send_data[0] = PICC_CMD_REQA;
     send_data[1] = 0;
@@ -285,11 +289,6 @@ RC522_Status rfid_rc522_request(uint8_t *atqa)
                                recv_data, 2);
 
     if (status == RC522_STATUS_OK) {
-        /* Validate ATQA - reject invalid responses */
-        if ((recv_data[0] == 0xFF && recv_data[1] == 0xFF) ||
-            (recv_data[0] == 0x00 && recv_data[1] == 0x00)) {
-            return RC522_STATUS_ERROR;
-        }
         atqa[0] = recv_data[0];
         atqa[1] = recv_data[1];
     }
@@ -309,15 +308,15 @@ RC522_Status rfid_rc522_anticoll(RC522_UID *uid)
     }
 
     /* Thorough reset of RC522 state before anticollision */
-    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
     rc522_clear_fifo();
-    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_ERROR, 0x00);
+    rfid_rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_DIV_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_ERROR, 0x00);
     
     /* Reset CRC and mode registers */
-    rc522_write_reg(RC522_REG_RX_MODE, 0x00);
-    rc522_write_reg(RC522_REG_TX_MODE, 0x00);
+    rfid_rc522_write_reg(RC522_REG_RX_MODE, 0x00);
+    rfid_rc522_write_reg(RC522_REG_TX_MODE, 0x00);
     
     /* Small delay for RC522 to settle */
     for (volatile int i = 0; i < 500; i++) { }
@@ -325,8 +324,8 @@ RC522_Status rfid_rc522_anticoll(RC522_UID *uid)
     send_data[0] = PICC_CMD_ANTICOLL_1;
     send_data[1] = 0x20;  /* NVB: 2 bytes */
 
-    /* Enable StartSend bit for anticollision */
-    rc522_set_bits(RC522_REG_BIT_FRAMING, 0x80, 0x80);
+    /* Set BitFraming to 0x00 for anticollision (per reference) */
+    rfid_rc522_write_reg(RC522_REG_BIT_FRAMING, 0x00);
 
     status = rc522_transceive(RC522_PCD_TRANSCEIVE,
                                send_data, 2,
@@ -334,7 +333,7 @@ RC522_Status rfid_rc522_anticoll(RC522_UID *uid)
 
     if (status == RC522_STATUS_OK) {
         /* Log ERROR register for debugging */
-        uint8_t error = rc522_read_reg(RC522_REG_ERROR);
+        uint8_t error = rfid_rc522_read_reg(RC522_REG_ERROR);
         uart_send_string("[ANTICOLL] Error: ");
         uart_send_hex(error);
         uart_send_string("\r\n");
@@ -370,10 +369,10 @@ RC522_Status rfid_rc522_select(RC522_UID *uid)
     RC522_Status status;
 
     /* Reset RC522 state before select */
-    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_IDLE);
     rc522_clear_fifo();
-    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_ERROR, 0x00);
+    rfid_rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_ERROR, 0x00);
 
     /* Calculate BCC (Block Check Character) */
     uint8_t bcc = uid->uid[0] ^ uid->uid[1] ^ uid->uid[2] ^ uid->uid[3];
@@ -420,26 +419,26 @@ RC522_Status rfid_rc522_auth(uint8_t block, uint8_t key_type,
     }
 
     /* Clear any error flags first */
-    rc522_write_reg(RC522_REG_ERROR, 0x00);
+    rfid_rc522_write_reg(RC522_REG_ERROR, 0x00);
 
     /* Write data to FIFO first */
     rc522_clear_fifo();
     rc522_write_fifo(send_data, 12);
 
     /* Start authentication command */
-    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_AUTHENT);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_AUTHENT);
 
     /* Wait for completion */
     for (volatile int i = 0; i < 5000; i++) { }
 
     /* Check if authentication was successful by reading Crypto1 status */
-    uint8_t crypto_status = rc522_read_reg(RC522_REG_CRYPT_STATUS);
+    uint8_t crypto_status = rfid_rc522_read_reg(RC522_REG_CRYPT_STATUS);
     if (crypto_status & 0x08) {
         return RC522_STATUS_OK;
     }
 
     /* Check for errors */
-    uint8_t error = rc522_read_reg(RC522_REG_ERROR);
+    uint8_t error = rfid_rc522_read_reg(RC522_REG_ERROR);
     if (error) {
         return RC522_STATUS_ERROR;
     }
@@ -489,12 +488,12 @@ RC522_Status rfid_rc522_write_block(uint8_t block, const uint8_t *data)
     rc522_clear_fifo();
     rc522_write_fifo(data, RC522_BLOCK_SIZE);
 
-    rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
-    rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_TRANSCEIVE);
+    rfid_rc522_write_reg(RC522_REG_COMM_IRQ, 0x7F);
+    rfid_rc522_write_reg(RC522_REG_COMMAND, RC522_PCD_TRANSCEIVE);
     rc522_set_bits(RC522_REG_BIT_FRAMING, 0x07, 0x00);
 
     volatile uint32_t timeout = 10000;
-    while (!(rc522_read_reg(RC522_REG_COMM_IRQ) & 0x30) && timeout--) { }
+    while (!(rfid_rc522_read_reg(RC522_REG_COMM_IRQ) & 0x30) && timeout--) { }
 
     uint8_t count = rc522_fifo_count();
     if (count > 0) {
@@ -522,5 +521,5 @@ uint8_t rfid_rc522_get_error(void)
 
 uint8_t rfid_rc522_get_crypto_status(void)
 {
-    return rc522_read_reg(RC522_REG_CRYPT_STATUS);
+    return rfid_rc522_read_reg(RC522_REG_CRYPT_STATUS);
 }
