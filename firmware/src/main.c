@@ -88,9 +88,27 @@ static uint8_t state_verify(void)
     uart_send_hex(version);
     uart_send_string("\r\n");
 
-    /* Check if version is valid */
-    if (version == 0x80 || version == 0x88 || version == 0x90 || 
-        version == 0x00 || version == 0xC0 || version == 0xC4) {
+/* SPI stability test - write and read 3 times */
+    uart_send_string("[VERIFY] SPI test: ");
+    uint8_t test_ok = 1;
+    for (int i = 0; i < 3; i++) {
+        rfid_rc522_write_reg(0x27, 0x55);  // Test register (FIFO)
+        uint8_t val = rfid_rc522_read_reg(0x27);
+        uart_send_hex(val);
+        uart_send_string(" ");
+        if (val != 0x55) {
+            test_ok = 0;
+        }
+    }
+    uart_send_string("\r\n");
+    if (test_ok) {
+        uart_send_string("[VERIFY] SPI OK\r\n");
+    } else {
+        uart_send_string("[VERIFY] SPI FAILED\r\n");
+    }
+
+    /* Check if version is valid - 0x90, 0x91, or 0x92 per datasheet */
+    if (version == 0x90 || version == 0x91 || version == 0x92) {
         uart_send_string("[VERIFY] Version OK!\r\n");
         return 1;
     } else {
@@ -115,13 +133,21 @@ static uint8_t state_idle(void)
     uint8_t atqa[2];
     RC522_Status status = rfid_rc522_request(atqa);
     
+    /* Display raw ATQA for debugging */
+    uart_send_string("[IDLE] ATQA raw: ");
+    uart_send_hex(atqa[0]);
+    uart_send_string(" ");
+    uart_send_hex(atqa[1]);
+    uart_send_string("\r\n");
+    
     if (status == RC522_STATUS_OK) {
-        uart_send_string("\r\n[IDLE] Card detected!\r\n");
-        uart_send_string("[IDLE] ATQA: ");
-        uart_send_hex(atqa[0]);
-        uart_send_string(" ");
-        uart_send_hex(atqa[1]);
-        uart_send_string("\r\n");
+        /* Validate ATQA - only accept valid values */
+        if ((atqa[0] == 0xFF && atqa[1] == 0xFF) ||
+            (atqa[0] == 0x00 && atqa[1] == 0x00)) {
+            return 0;
+        }
+        
+        uart_send_string("[IDLE] Card detected!\r\n");
         return 1;
     }
     
