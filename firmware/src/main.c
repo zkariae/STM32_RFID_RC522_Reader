@@ -110,11 +110,46 @@ static uint8_t state_verify(void)
     /* Check if version is valid - 0x90, 0x91, or 0x92 per datasheet */
     if (version == 0x90 || version == 0x91 || version == 0x92) {
         uart_send_string("[VERIFY] Version OK!\r\n");
-        return 1;
     } else {
         uart_send_string("[VERIFY] Version INVALID - will retry init\r\n");
         return 0;
     }
+
+    /* Verify antenna is ON by reading TxControl register (0x14) */
+    uart_send_string("[VERIFY] Checking antenna...\r\n");
+    uint8_t tx_control = rfid_rc522_read_reg(0x14);
+    uart_send_string("[VERIFY] TxControl: ");
+    uart_send_hex(tx_control);
+    uart_send_string("\r\n");
+    
+    if ((tx_control & 0x03) == 0x03) {
+        uart_send_string("[VERIFY] Antenna ON!\r\n");
+    } else {
+        uart_send_string("[VERIFY] Antenna OFF - enabling...\r\n");
+        /* Try to enable antenna */
+        rfid_rc522_write_reg(0x14, tx_control | 0x03);
+        tx_control = rfid_rc522_read_reg(0x14);
+        uart_send_string("[VERIFY] TxControl after enable: ");
+        uart_send_hex(tx_control);
+        uart_send_string("\r\n");
+    }
+
+    /* Check RF configuration registers */
+    uart_send_string("[VERIFY] RF config:\r\n");
+    uint8_t tx_mode = rfid_rc522_read_reg(0x12);
+    uint8_t rx_mode = rfid_rc522_read_reg(0x13);
+    uint8_t tx_ask = rfid_rc522_read_reg(0x15);
+    uart_send_string("  TxMode: ");
+    uart_send_hex(tx_mode);
+    uart_send_string(" (expect 0x00)\r\n");
+    uart_send_string("  RxMode: ");
+    uart_send_hex(rx_mode);
+    uart_send_string(" (expect 0x07)\r\n");
+    uart_send_string("  TxAsk: ");
+    uart_send_hex(tx_ask);
+    uart_send_string(" (expect 0x40)\r\n");
+
+    return 1;
 }
 
 /**
