@@ -12,6 +12,7 @@
     LOG_ERROR("Message")
     LOG_DEBUG("Message")
     LOG_DEBUG_INT("valeur =", 42)
+    LOG_DEBUG_HEX("valeur =", 0x02)
 ==============================================================*/
 
 /* Niveaux de log */
@@ -95,6 +96,22 @@
             uart_send_string("] ");               \
             uart_send_string(msg);                \
             uart_send_int(val);                   \
+            uart_send_string("\r\n");             \
+        }                                         \
+    } while (0)
+
+#define LOG_DEBUG_HEX(msg, val)                   \
+    do                                            \
+    {                                             \
+        if (LOG_LEVEL_CURRENT <= LOG_LEVEL_DEBUG) \
+        {                                         \
+            uart_send_string("[DBG]  [");         \
+            uart_send_string(__FILE__);           \
+            uart_send_string(":");                \
+            uart_send_int(__LINE__);              \
+            uart_send_string("] ");               \
+            uart_send_string(msg);                \
+            uart_send_hex((uint8_t)(val));        \
             uart_send_string("\r\n");             \
         }                                         \
     } while (0)
