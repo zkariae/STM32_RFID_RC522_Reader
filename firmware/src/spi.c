@@ -1,7 +1,7 @@
 /**
  * @file spi.c
  * @brief Driver SPI2 hardware — Mode 0, Master, 8 bits MSB.
- *        SCK=PB13, MISO=PB14, MOSI=PB15, NSS logiciel sur PB4.
+ *        SCK=PB10, MISO=PC2, MOSI=PC3, NSS logiciel sur PB4.
  */
 
 #include "spi.h"
@@ -15,13 +15,21 @@ void spi_driver_init(void)
 {
     rcc_periph_clock_enable(RCC_SPI2);
 
-    /* SPI2: Mode 0 (CPOL=0, CPHA=0), Master, 8 bits, MSB first, ~0.65MHz (DIV_128) */
+    /* SPI2: Mode 0 (CPOL=0, CPHA=0), Master, 8 bits, MSB first, ~500 kHz (DIV_32) */
     spi_init_master(SPI2,
-                    SPI_CR1_BAUDRATE_FPCLK_DIV_128,  /* ~0.65 MHz */
+                    SPI_CR1_BAUDRATE_FPCLK_DIV_32,   /* ~500 kHz avec PCLK1=16 MHz */
                     SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,  /* CPOL = 0 */
                     SPI_CR1_CPHA_CLK_TRANSITION_1,    /* CPHA = 0 */
                     SPI_CR1_DFF_8BIT,
                     SPI_CR1_MSBFIRST);
+
+    /* Configuration explicite équivalente HAL pour SPI2. */
+    SPI_CR1(SPI2) &= ~(SPI_CR1_CPOL | SPI_CR1_CPHA);  /* CPOL = 0, CPHA = 0 */
+    spi_set_unidirectional_mode(SPI2);                /* SPI_DIRECTION_2LINES */
+    spi_set_full_duplex_mode(SPI2);
+    SPI_CR2(SPI2) &= ~SPI_CR2_FRF;                    /* SPI_TIMODE_DISABLE */
+    spi_disable_crc(SPI2);                            /* SPI_CRCCALCULATION_DISABLE */
+    SPI2_CRCPR = 10;                                  /* CRCPolynomial = 10 */
 
     /* NSS géré par logiciel (PB4) */
     spi_enable_software_slave_management(SPI2);

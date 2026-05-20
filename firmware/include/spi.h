@@ -1,7 +1,8 @@
 /**
  * @file spi.h
  * @brief Interface du driver SPI2 — Mode 0, Master, 8 bits (libopencm3).
- *        NSS logiciel sur PB4 pour le module RC522, RST sur PC0.
+ *        SCK sur PB10, MISO sur PC2, MOSI sur PC3,
+ *        NSS logiciel sur PB4 pour le module RC522, RST sur PB5.
  */
 
 #ifndef SPI_H
@@ -17,12 +18,12 @@
 #define RC522_CS_HIGH()  gpio_set(GPIOB, GPIO4)
 
 /** @brief Reset RC522 (RST bas). */
-#define RC522_RST_LOW()  gpio_clear(GPIOC, GPIO0)
+#define RC522_RST_LOW()  gpio_clear(GPIOB, GPIO5)
 
 /** @brief Sortie reset RC522 (RST haut). */
-#define RC522_RST_HIGH() gpio_set(GPIOC, GPIO0)
+#define RC522_RST_HIGH() gpio_set(GPIOB, GPIO5)
 
-/** @brief Initialise SPI2 en maître, Mode 0, 8 bits. @pre PB4, PB13-15 configurés. */
+/** @brief Initialise SPI2 en maître, Mode 0, 8 bits. @pre PB4/PB5/PB10, PC2/PC3 configurés. */
 void spi_driver_init(void);
 
 /** @brief Écrit un octet sans réponse (pour RC522). */
