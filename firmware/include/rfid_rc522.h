@@ -1,5 +1,5 @@
 /**
- * @file rfid_rc522.h
+a * @file rfid_rc522.h
  * @brief Interface du driver pour le module RFID RC522 (MFRC522).
  *        Communication SPI via spi.h.
  */
@@ -125,10 +125,10 @@ typedef enum {
     RC522_STATUS_OK = 0,
     RC522_STATUS_ERROR = 1,
     RC522_STATUS_COLLISION,
-    RC522_STATUS_TIMEOUT,
+    RC522_STATUS_TIMEOUT = 2,
     RC522_STATUS_NO_ROOM,
     RC522_STATUS_INTERNAL_ERROR,
-    RC522_STATUS_INVALID,
+    RC522_STATUS_INVALID = 3,
     RC522_STATUS_CRC_WRONG,
     RC522_STATUS_MIFARE_AUTH_ERROR,
     RC522_STATUS_BITCOUNT_FRAMING,
@@ -153,6 +153,9 @@ typedef enum {
 
 /** @brief Taille de la FIFO RC522 (64 bytes) */
 #define RC522_FIFO_SIZE            64
+
+/**@brief Nbr tentatives pour détecter une carte MIFAIRE */
+#define MAX_TIMEOUT_COUNT 10
 
 /**
  * @brief Structure représentant l'UID d'une carte.
@@ -228,7 +231,7 @@ void rfid_rc522_antenna_off(MFRC522_t *dev);
  * @brief Lit la version du firmware du RC522.
  * @return Version du chip (0x88, 0x90, etc.) ou 0xFF si erreur.
  */
-uint8_t rfid_rc522_get_version(void);
+uint8_t rfid_rc522_get_version(MFRC522_t *dev);
 
 /**
  * @brief Envoie une commande REQA pour détecter les cartes à proximité.
@@ -293,7 +296,7 @@ uint8_t rfid_rc522_get_error(void);
  * @brief Lit le registre Crypto1 Status.
  * @return Valeur du registre.
  */
-uint8_t rfid_rc522_get_crypto_status(void);
+uint8_t rfid_rc522_get_crypto_status(MFRC522_t *dev);
 
 /**
  * @brief Écrit un octet dans un registre du RC522.
@@ -307,6 +310,40 @@ void rfid_rc522_write_reg(MFRC522_t *dev, uint8_t addr, uint8_t value);
  * @param addr Adresse du registre.
  * @return Valeur lue.
  */
-uint8_t rfid_rc522_read_reg(uint8_t addr);
+uint8_t rfid_rc522_read_reg(MFRC522_t *dev, uint8_t addr);
+
+
+/**
+ * @brief Efface un ou plusieurs bits d'un registre du MFRC522.
+ *
+ * @param[in] dev   Pointeur vers la structure MFRC522 (périphérique cible).
+ * @param[in] reg   Adresse du registre à modifier.
+ * @param[in] mask  Masque des bits à effacer (1 = bit effacé, 0 = bit inchangé).
+ *
+ * @return void
+ */
+void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
+
+
+/**
+ * @brief Détecte la présence d'une carte RFID en une seule tentative.
+ *
+ * Réinitialise l'état interne du MFRC522 (commande, interruptions, FIFO,
+ * chiffrement), puis envoie une trame REQA (ISO 14443A) pour sonder le champ RF.
+ *
+ * @param[in] dev  Pointeur vers la structure MFRC522 (périphérique cible).
+ *
+ * @return STATUS_OK      Une carte a répondu à la requête REQA.
+ * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
+ */
+uint8_t rfid_rc522_PollCard(MFRC522_t *dev);
+
+/**
+ * @brief Réinitialise le module MFRC522 après une erreur ou un blocage.
+ * @param[in] dev Pointeur vers la structure MFRC522 (périphérique cible).
+ */
+void rfid_rc522_Recover(MFRC522_t *dev);
+
+
 
 #endif /* RFID_RC522_H */

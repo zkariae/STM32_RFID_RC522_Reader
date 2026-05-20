@@ -24,7 +24,7 @@ typedef enum {
 
 typedef enum {
     INIT_OK = 0,
-    INIT_FAILED,
+    INIT_FAILED ,
     INIT_RETRY
 } InitResult;
 
@@ -76,114 +76,36 @@ static InitResult state_init(void)
  */
 static uint8_t state_verify(void)
 {
-    uart_send_string("\r\n=== STATE: VERIFY ===\r\n");
-    uart_send_string("[VERIFY] Reading version register...\r\n");
-
-    uint8_t version = rfid_rc522_get_version();
-    
-    uart_send_string("[VERIFY] Version: ");
-    uart_send_hex(version);
-    uart_send_string("\r\n");
-
-/* SPI stability test - write and read 3 times */
-    uart_send_string("[VERIFY] SPI test: ");
-    uint8_t test_ok = 1;
-    for (int i = 0; i < 3; i++) {
-        rfid_rc522_write_reg(&rfID, 0x27, 0x55);  // Test register (FIFO)
-        uint8_t val = rfid_rc522_read_reg(0x27);
-        uart_send_hex(val);
-        uart_send_string(" ");
-        if (val != 0x55) {
-            test_ok = 0;
-        }
-    }
-    uart_send_string("\r\n");
-    if (test_ok) {
-        uart_send_string("[VERIFY] SPI OK\r\n");
-    } else {
-        uart_send_string("[VERIFY] SPI FAILED\r\n");
-    }
-
-    /* Check if version is valid - 0x90, 0x91, or 0x92 per datasheet */
-    if (version == 0x90 || version == 0x91 || version == 0x92) {
-        uart_send_string("[VERIFY] Version OK!\r\n");
-    } else {
-        uart_send_string("[VERIFY] Version INVALID - will retry init\r\n");
-        return 0;
-    }
-
-    /* Verify antenna is ON by reading TxControl register (0x14) */
-    uart_send_string("[VERIFY] Checking antenna...\r\n");
-    uint8_t tx_control = rfid_rc522_read_reg(0x14);
-    uart_send_string("[VERIFY] TxControl: ");
-    uart_send_hex(tx_control);
-    uart_send_string("\r\n");
-    
-    if ((tx_control & 0x03) == 0x03) {
-        uart_send_string("[VERIFY] Antenna ON!\r\n");
-    } else {
-        uart_send_string("[VERIFY] Antenna OFF - enabling...\r\n");
-        /* Try to enable antenna */
-        rfid_rc522_write_reg(&rfID, 0x14, tx_control | 0x03);
-        tx_control = rfid_rc522_read_reg(0x14);
-        uart_send_string("[VERIFY] TxControl after enable: ");
-        uart_send_hex(tx_control);
-        uart_send_string("\r\n");
-    }
-
-    /* Check RF configuration registers */
-    uart_send_string("[VERIFY] RF config:\r\n");
-    uint8_t tx_mode = rfid_rc522_read_reg(0x12);
-    uint8_t rx_mode = rfid_rc522_read_reg(0x13);
-    uint8_t tx_ask = rfid_rc522_read_reg(0x15);
-    uart_send_string("  TxMode: ");
-    uart_send_hex(tx_mode);
-    uart_send_string(" (expect 0x00)\r\n");
-    uart_send_string("  RxMode: ");
-    uart_send_hex(rx_mode);
-    uart_send_string(" (expect 0x07)\r\n");
-    uart_send_string("  TxAsk: ");
-    uart_send_hex(tx_ask);
-    uart_send_string(" (expect 0x40)\r\n");
-
     return 1;
 }
+
+
 
 /**
  * @brief State: Idle - wait for card detection
  */
 static uint8_t state_idle(void)
 {
-    /* Only print state occasionally to avoid flooding */
-    static uint8_t counter = 0;
-    counter++;
-    if (counter > 10) {
-        uart_send_string(".\r\n");
-        counter = 0;
-    }
-
-    uint8_t atqa[2];
-    RC522_Status status = rfid_rc522_request(&rfID, atqa);
-    
-    /* Display raw ATQA for debugging */
-    uart_send_string("[IDLE] ATQA raw: ");
-    uart_send_hex(atqa[0]);
-    uart_send_string(" ");
-    uart_send_hex(atqa[1]);
-    uart_send_string("\r\n");
-    
-    if (status == RC522_STATUS_OK) {
-        /* Validate ATQA - only accept valid values */
-        if ((atqa[0] == 0xFF && atqa[1] == 0xFF) ||
-            (atqa[0] == 0x00 && atqa[1] == 0x00)) {
-            return 0;
-        }
-        
-        uart_send_string("[IDLE] Card detected!\r\n");
-        return 1;
-    }
-    
-    return 0;
+   static uint8_t timeoutCount = 0;
+   if (rfid_rc522_PollCard(&rfID) == RC522_STATUS_OK)
+   {
+       timeoutCount = 0; // Reset compteur si carte détectée
+       LOG_DEBUG("Card detected");
+       return RC522_STATUS_OK;
+   }
+   else
+   {
+       timeoutCount++;
+       LOG_DEBUG_INT("Card not detected, timeout count = %d", timeoutCount);
+       if(timeoutCount >= MAX_TIMEOUT_COUNT)
+       {    
+           timeoutCount = 0;
+           LOG_INFO("MFRC522 stuck, recovering...");
+           rfid_rc522_Recover(&rfID);
+       }
+       delay_ms(100);  /* Poll toutes les 100ms */
+       return RC522_STATUS_INVALID;
+   }
 }
 
 /**
@@ -192,44 +114,6 @@ static uint8_t state_idle(void)
 static void state_streaming(void)
 {
     uart_send_string("\r\n=== STATE: STREAMING ===\r\n");
-    uart_send_string("[STREAM] Reading card UID...\r\n");
-
-    /* Perform anticollision */
-    RC522_Status status = rfid_rc522_anticoll(&rfID, &current_uid);
-    
-    if (status == RC522_STATUS_OK) {
-        /* Small delay before select */
-        for (volatile int i = 0; i < 1000; i++) { }
-        
-        /* Perform SELECT to get SAK */
-        status = rfid_rc522_select(&rfID, &current_uid);
-        
-        uart_send_string("[STREAM] UID: ");
-        for (int i = 0; i < current_uid.size; i++) {
-            uart_send_hex(current_uid.uid[i]);
-            uart_send_string(" ");
-        }
-        uart_send_string("\r\n");
-        
-        uart_send_string("[STREAM] Size: ");
-        uart_send_int(current_uid.size);
-        uart_send_string(" bytes\r\n");
-        
-        uart_send_string("[STREAM] Select status: ");
-        uart_send_hex(status);
-        uart_send_string("\r\n");
-        
-        if (status == RC522_STATUS_OK) {
-            uart_send_string("[STREAM] SAK: ");
-            uart_send_hex(current_uid.sak);
-            uart_send_string("\r\n");
-            card_detected = 1;
-        } else {
-            uart_send_string("[STREAM] Failed to select card\r\n");
-        }
-    } else {
-        uart_send_string("[STREAM] Failed to read UID\r\n");
-    }
 }
 
 /* ============================================================================
@@ -263,10 +147,9 @@ int main(void)
             {
                 uart_send_string("\r\n>>> STATE: INIT\r\n");
                 InitResult result = state_init();
-                
                 if (result == INIT_OK) {
                     uart_send_string("[MAIN] Init successful -> VERIFY\r\n");
-                    // current_state = STATE_VERIFY;
+                    current_state = STATE_VERIFY;
                 } else {
                     uart_send_string("[MAIN] Init failed -> retry INIT\r\n");
                     for (volatile int i = 0; i < 1000000; i++) { }
@@ -280,15 +163,7 @@ int main(void)
             /* ======================================== */
             {
                 uart_send_string("\r\n>>> STATE: VERIFY\r\n");
-                version_ok = state_verify();
-                
-                if (version_ok) {
-                    uart_send_string("[MAIN] Version OK -> IDLE\r\n");
-                    current_state = STATE_IDLE;
-                } else {
-                    uart_send_string("[MAIN] Version invalid -> INIT\r\n");
-                    current_state = STATE_INIT;
-                }
+                current_state = STATE_IDLE;
                 break;
             }
             
@@ -297,14 +172,16 @@ int main(void)
             /* ======================================== */
             {
                 /* Check for card without printing state constantly */
-                uint8_t detected = state_idle();
-                
-                if (detected) {
-                    uart_send_string("[MAIN] Card detected -> STREAMING\r\n");
+                uart_send_string("\r\n>>> STATE: IDLE\r\n");
+                uint8_t result = state_idle();
+                if(result == RC522_STATUS_OK)
+                {
                     current_state = STATE_STREAMING;
-                } else {
-                    /* Stay in IDLE - check again after delay */
-                    for (volatile int i = 0; i < 500000; i++) { }
+                    delay_ms(100);
+                }
+                else if(result == RC522_STATUS_INVALID)
+                {
+                    current_state = STATE_IDLE;
                 }
                 break;
             }
@@ -314,14 +191,8 @@ int main(void)
             /* ======================================== */
             {
                 state_streaming();
-                
-                if (card_detected) {
-                    uart_send_string("[MAIN] UID displayed -> IDLE\r\n");
-                    card_detected = 0;
-                }
-                
-                /* Small delay before going back to IDLE */
-                for (volatile int i = 0; i < 1000000; i++) { }
+                uart_send_string("\r\n>>> STATE: STREAMING\r\n");
+                delay_ms(1000);
                 current_state = STATE_IDLE;
                 break;
             }

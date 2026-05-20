@@ -6,6 +6,7 @@
 
 #include "rfid_rc522.h"
 #include "log.h"
+#include "uart.h"
 #include "spi.h"
 #include "systick.h"
 #include <libopencm3/stm32/gpio.h>
@@ -55,16 +56,16 @@ void rfid_rc522_write_reg(MFRC522_t *dev, uint8_t addr, uint8_t value)
 /**
  * @brief Lit un octet depuis un registre du RC522.
  */
-uint8_t rfid_rc522_read_reg(uint8_t addr)
+uint8_t rfid_rc522_read_reg(MFRC522_t *dev, uint8_t addr)
 {
     uint8_t value;
-    RC522_CS_LOW();
+    gpio_clear(dev->cs_Port, dev->cs_Pin);
     for (volatile int i = 0; i < 2000; i++) { }
     rc522_spi_write(RC522_READ_ADDR(addr));
     for (volatile int i = 0; i < 1000; i++) { }
     value = rc522_spi_read();
     for (volatile int i = 0; i < 2000; i++) { }
-    RC522_CS_HIGH();
+    gpio_set(dev->cs_Port, dev->cs_Pin);
     for (volatile int i = 0; i < 10000; i++) { }
     return value;
 }
@@ -74,7 +75,7 @@ uint8_t rfid_rc522_read_reg(uint8_t addr)
  */
 static void rc522_set_bits(MFRC522_t *dev, uint8_t addr, uint8_t mask, uint8_t value)
 {
-    uint8_t tmp = rfid_rc522_read_reg(addr);
+    uint8_t tmp = rfid_rc522_read_reg(dev, addr);
     tmp = (tmp & ~mask) | value;
     rfid_rc522_write_reg(dev, addr, tmp);
 }
@@ -111,9 +112,9 @@ static void rc522_read_fifo(uint8_t *data, uint8_t len)
     for (volatile int i = 0; i < 5000; i++) { }
 }
 
-static uint8_t rc522_fifo_count(void)
+static uint8_t rc522_fifo_count(MFRC522_t *dev)
 {
-    return rfid_rc522_read_reg(RC522_REG_FIFO_LEVEL) & 0x7F;
+    return rfid_rc522_read_reg(dev, RC522_REG_FIFO_LEVEL) & 0x7F;
 }
 
 static void rc522_clear_fifo(MFRC522_t *dev)
@@ -162,23 +163,23 @@ static RC522_Status rc522_transceive(MFRC522_t *dev,
 
     /* StartSend bit must be set AFTER command for transceive */
     if (cmd == RC522_PCD_TRANSCEIVE) {
-        uint8_t current = rfid_rc522_read_reg(RC522_REG_BIT_FRAMING);
+        uint8_t current = rfid_rc522_read_reg(dev, RC522_REG_BIT_FRAMING);
         rfid_rc522_write_reg(dev, RC522_REG_BIT_FRAMING, current | 0x80);
     }
 
     /* Wait for RxIRq (data received) or IdleIRq (command finished) */
     timeout = 20000;  /* Increased timeout */
     do {
-        irq = rfid_rc522_read_reg(RC522_REG_COMM_IRQ);
+        irq = rfid_rc522_read_reg(dev, RC522_REG_COMM_IRQ);
         timeout--;
     } while (!(irq & wait_irq) && timeout);
 
     /* Read actual error register */
-    _error_code = rfid_rc522_read_reg(RC522_REG_ERROR);
+    _error_code = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
 
     /* Debug output */
     {
-        uint8_t fifo = rc522_fifo_count();
+        uint8_t fifo = rc522_fifo_count(dev);
         uart_send_string("[XFER] IRQ:");
         uart_send_hex(irq);
         uart_send_string(" TO:");
@@ -201,7 +202,7 @@ static RC522_Status rc522_transceive(MFRC522_t *dev,
     if (irq & 0x10) {
         /* RxIRq = card responded with data in FIFO */
         if (cmd == RC522_PCD_TRANSCEIVE && recv_len > 0 && recv_data != NULL) {
-            uint8_t count = rc522_fifo_count();
+            uint8_t count = rc522_fifo_count(dev);
             if (count > recv_len) count = recv_len;
             if (count > 0) {
                 rc522_read_fifo(recv_data, count);
@@ -264,12 +265,12 @@ RC522_Status rfid_rc522_init(MFRC522_t *dev)
     delay_ms(10);
 
     /* Lire la version de MFRC522 */
-    uint8_t version = rfid_rc522_read_reg(RC522_REG_VERSION);
+    uint8_t version = rfid_rc522_read_reg(dev, RC522_REG_VERSION);
     if ((version != 0x91) && (version != 0x92)) {
-        LOG_DEBUG_INT("Warning: unexpected version 0x%02X", version);
+        LOG_DEBUG_HEX("Warning: unexpected version :", version);
         return RC522_STATUS_ERROR; 
     } else {
-        LOG_DEBUG_INT("Version: 0x%02X OK", version);
+        LOG_DEBUG_HEX("OK --> version :", version);
         LOG_INFO("RC522 initialisé");
         return RC522_STATUS_OK;
     } 
@@ -283,7 +284,7 @@ void rfid_rc522_reset(MFRC522_t *dev)
 
 RC522_Status rfid_rc522_antenna_on(MFRC522_t *dev)
 {
-    uint8_t val = rfid_rc522_read_reg(RC522_REG_TX_CONTROL);
+    uint8_t val = rfid_rc522_read_reg(dev, RC522_REG_TX_CONTROL);
     if ((val & 0x03) != 0x03) {
         rc522_set_bits(dev, RC522_REG_TX_CONTROL, 0x03, 0x03);
     }
@@ -295,9 +296,9 @@ void rfid_rc522_antenna_off(MFRC522_t *dev)
     rc522_set_bits(dev, RC522_REG_TX_CONTROL, 0x03, 0x00);
 }
 
-uint8_t rfid_rc522_get_version(void)
+uint8_t rfid_rc522_get_version(MFRC522_t *dev)
 {
-    return rfid_rc522_read_reg(RC522_REG_VERSION);
+    return rfid_rc522_read_reg(dev, RC522_REG_VERSION);
 }
 
 RC522_Status rfid_rc522_request(MFRC522_t *dev, uint8_t *atqa)
@@ -378,7 +379,7 @@ RC522_Status rfid_rc522_anticoll(MFRC522_t *dev, RC522_UID *uid)
 
     if (status == RC522_STATUS_OK) {
         /* Log ERROR register for debugging */
-        uint8_t error = rfid_rc522_read_reg(RC522_REG_ERROR);
+        uint8_t error = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
         uart_send_string("[ANTICOLL] Error: ");
         uart_send_hex(error);
         uart_send_string("\r\n");
@@ -478,13 +479,13 @@ RC522_Status rfid_rc522_auth(MFRC522_t *dev, uint8_t block, uint8_t key_type,
     for (volatile int i = 0; i < 5000; i++) { }
 
     /* Check if authentication was successful by reading Crypto1 status */
-    uint8_t crypto_status = rfid_rc522_read_reg(RC522_REG_CRYPT_STATUS);
+    uint8_t crypto_status = rfid_rc522_read_reg(dev, RC522_REG_CRYPT_STATUS);
     if (crypto_status & 0x08) {
         return RC522_STATUS_OK;
     }
 
     /* Check for errors */
-    uint8_t error = rfid_rc522_read_reg(RC522_REG_ERROR);
+    uint8_t error = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
     if (error) {
         return RC522_STATUS_ERROR;
     }
@@ -541,9 +542,9 @@ RC522_Status rfid_rc522_write_block(MFRC522_t *dev, uint8_t block, const uint8_t
     rc522_set_bits(dev, RC522_REG_BIT_FRAMING, 0x07, 0x00);
 
     volatile uint32_t timeout = 10000;
-    while (!(rfid_rc522_read_reg(RC522_REG_COMM_IRQ) & 0x30) && timeout--) { }
+    while (!(rfid_rc522_read_reg(dev, RC522_REG_COMM_IRQ) & 0x30) && timeout--) { }
 
-    uint8_t count = rc522_fifo_count();
+    uint8_t count = rc522_fifo_count(dev);
     if (count > 0) {
         rc522_read_fifo(recv_data, 1);
         if (recv_data[0] == 0x0A) {
@@ -567,7 +568,124 @@ uint8_t rfid_rc522_get_error(void)
     return _error_code;
 }
 
-uint8_t rfid_rc522_get_crypto_status(void)
+uint8_t rfid_rc522_get_crypto_status(MFRC522_t *dev)
 {
-    return rfid_rc522_read_reg(RC522_REG_CRYPT_STATUS);
+    return rfid_rc522_read_reg(dev, RC522_REG_CRYPT_STATUS);
+}
+
+/* Envoie une commande REQA et récupère l'ATQA (2 octets) de la carte.
+ * Retourne STATUS_OK si une carte valide répond, STATUS_ERROR ou STATUS_TIMEOUT sinon. */
+uint8_t rfid_rc522_RequestA(MFRC522_t *dev, uint8_t *atqa) {
+    LOG_DEBUG("RequestA");
+
+    /* Réinitialisation : arrêt, clear IRQ, flush FIFO */
+    rfid_rc522_write_reg(dev, RC522_REG_COMMAND,    RC522_PCD_IDLE);
+    rfid_rc522_write_reg(dev, RC522_REG_COMM_IRQ,   0x7F);
+    rfid_rc522_write_reg(dev, RC522_REG_FIFO_LEVEL, 0x80);
+
+    /* Trame courte 7 bits (exigence ISO 14443-A), puis dépôt du REQA dans le FIFO */
+    rfid_rc522_write_reg(dev, RC522_REG_BIT_FRAMING, 0x07);
+    rfid_rc522_write_reg(dev, RC522_REG_FIFO_DATA,   PICC_CMD_REQA);
+
+    /* Lancement de l'émission RF */
+    rfid_rc522_write_reg(dev, RC522_REG_COMMAND,     RC522_PCD_TRANSCEIVE);
+    rfid_rc522_write_reg(dev, RC522_REG_BIT_FRAMING, 0x87); /* bit StartSend = 1 */
+
+    /* Attente réponse carte : RxIRq (données reçues) ou TimerIRq (timeout), 25 ms max */
+    uint32_t timeout = systick_get_tick() + 25;
+    uint8_t irq = 0;
+    while (systick_get_tick() < timeout) {
+        irq = rfid_rc522_read_reg(dev, RC522_REG_COMM_IRQ);
+        if (irq & 0x20) break;  /* RxIRq  : données reçues */
+        if (irq & 0x04) break;  /* TimerIRq : pas de réponse */
+        delay_ms(1);
+    }
+
+    /* Lecture état final : erreurs et nombre d'octets dans le FIFO */
+    uint8_t err     = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
+    uint8_t fifoLvl = rfid_rc522_read_reg(dev, RC522_REG_FIFO_LEVEL);
+    rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE); /* retour au repos */
+    LOG_DEBUG_HEX("RequestA IRQ: ", irq);
+    LOG_DEBUG_HEX("RequestA ERR: ", err);
+    LOG_DEBUG_HEX("RequestA FIFO: ", fifoLvl);
+
+    /* Erreur RF détectée (parité, CRC, collision, overflow) */
+    if (err & 0x1B) {
+        LOG_DEBUG_HEX("RequestA error: ", err);
+        return RC522_STATUS_ERROR;
+    }
+
+    /* Données reçues et FIFO contient bien les 2 octets attendus */
+    if ((irq & 0x20) && fifoLvl >= 2) {
+        atqa[0] = rfid_rc522_read_reg(dev, RC522_REG_FIFO_DATA);
+        atqa[1] = rfid_rc522_read_reg(dev, RC522_REG_FIFO_DATA);
+
+        /* Réponse nulle = faux positif, on rejette */
+        if (atqa[0] == 0x00 && atqa[1] == 0x00) {
+            LOG_DEBUG("RequestA fake response");
+            return RC522_STATUS_TIMEOUT;
+        }
+
+        LOG_DEBUG_HEX("RequestA ATQA[0]: ", atqa[0]);
+        LOG_DEBUG_HEX("RequestA ATQA[1]: ", atqa[1]);
+        return RC522_STATUS_OK;
+    }
+
+    /* Aucune carte détectée dans le délai imparti */
+    LOG_DEBUG("RequestA timeout");
+    return RC522_STATUS_TIMEOUT;
+}
+
+/**
+ * @brief Efface un ou plusieurs bits d'un registre du MFRC522.
+ *
+ * @param[in] dev   Pointeur vers la structure MFRC522 (périphérique cible).
+ * @param[in] reg   Adresse du registre à modifier.
+ * @param[in] mask  Masque des bits à effacer (1 = bit effacé, 0 = bit inchangé).
+ *
+ * @return void
+ */
+void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask)
+{
+    uint8_t tmp = rfid_rc522_read_reg(dev, reg);
+    rfid_rc522_write_reg(dev, reg, tmp & (~mask));
+    LOG_DEBUG_HEX("ClearBitMask reg: ", reg);
+    LOG_DEBUG_HEX("ClearBitMask mask: ", mask);
+}
+
+/**
+ * @brief Détecte la présence d'une carte RFID en une seule tentative.
+ *
+ * Réinitialise l'état interne du MFRC522 (commande, interruptions, FIFO,
+ * chiffrement), puis envoie une trame REQA (ISO 14443A) pour sonder le champ RF.
+ *
+ * @param[in] dev  Pointeur vers la structure MFRC522 (périphérique cible).
+ *
+ * @return STATUS_OK      Une carte a répondu à la requête REQA.
+ * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
+ */
+uint8_t rfid_rc522_PollCard(MFRC522_t *dev)
+{
+    uint8_t atqa[2];
+    rfid_rc522_write_reg(dev,    RC522_REG_COMMAND,      RC522_PCD_IDLE);
+    rfid_rc522_write_reg(dev,    RC522_REG_COMM_IRQ,     0x7F);
+    rfid_rc522_write_reg(dev,    RC522_REG_FIFO_LEVEL,   0x80);
+    rfid_rc522_ClearBitMask(dev, RC522_REG_STATUS_2,     0x08);
+    return rfid_rc522_RequestA(dev, atqa);
+}
+
+/**
+ * @brief Réinitialise le module MFRC522 après une erreur ou un blocage.
+ *        Effectue un soft reset, attend la stabilisation, puis relance
+ *        l'initialisation complète et réactive l'antenne.
+ * @param dev Pointeur vers la structure du périphérique MFRC522.
+ */
+void rfid_rc522_Recover(MFRC522_t *dev)
+{
+    LOG_DEBUG("MFRC522 recovering...");
+    rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_RESET); // Soft reset matériel
+    delay_ms(50);                                                 // Attente stabilisation (≥50 ms)
+    (void)rfid_rc522_init(dev);                                   // Réinitialisation complète
+    (void)rfid_rc522_antenna_on(dev);                             // Réactivation de l'antenne RF
+    LOG_DEBUG("MFRC522 recovered");
 }
