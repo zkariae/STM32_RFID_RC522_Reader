@@ -38,6 +38,17 @@ static RC522_UID current_uid;
 static uint8_t card_detected = 0;
 
 /* ============================================================================
+ * STRUCTURES
+ * ============================================================================ */
+
+MFRC522_t rfID = {
+    .cs_Port = GPIOB,
+    .cs_Pin = GPIO4,
+    .rst_Port = GPIOB,
+    .rst_Pin = GPIO5,
+};
+
+/* ============================================================================
  * STATE FUNCTIONS
  * ============================================================================ */
 
@@ -47,23 +58,9 @@ static uint8_t card_detected = 0;
 static InitResult state_init(void)
 {
     uart_send_string("\r\n=== STATE: INIT ===\r\n");
-    uart_send_string("[INIT] Starting hardware initialization...\r\n");
-
-    /* Hardware reset via RST pin */
-    RC522_RST_HIGH();
-    RC522_CS_HIGH();
-    for (volatile int i = 0; i < 100000; i++) { }
     
-    RC522_RST_LOW();
-    for (volatile int i = 0; i < 100000; i++) { }
-    
-    RC522_RST_HIGH();
-    for (volatile int i = 0; i < 2000000; i++) { }
-    
-    uart_send_string("[INIT] Hardware reset complete\r\n");
-
     /* Initialize RC522 via driver */
-    RC522_Status status = rfid_rc522_init();
+    RC522_Status status = rfid_rc522_init(&rfID);
     
     if (status == RC522_STATUS_OK) {
         uart_send_string("[INIT] Driver initialization OK\r\n");
@@ -92,7 +89,7 @@ static uint8_t state_verify(void)
     uart_send_string("[VERIFY] SPI test: ");
     uint8_t test_ok = 1;
     for (int i = 0; i < 3; i++) {
-        rfid_rc522_write_reg(0x27, 0x55);  // Test register (FIFO)
+        rfid_rc522_write_reg(&rfID, 0x27, 0x55);  // Test register (FIFO)
         uint8_t val = rfid_rc522_read_reg(0x27);
         uart_send_hex(val);
         uart_send_string(" ");
@@ -127,7 +124,7 @@ static uint8_t state_verify(void)
     } else {
         uart_send_string("[VERIFY] Antenna OFF - enabling...\r\n");
         /* Try to enable antenna */
-        rfid_rc522_write_reg(0x14, tx_control | 0x03);
+        rfid_rc522_write_reg(&rfID, 0x14, tx_control | 0x03);
         tx_control = rfid_rc522_read_reg(0x14);
         uart_send_string("[VERIFY] TxControl after enable: ");
         uart_send_hex(tx_control);
@@ -166,7 +163,7 @@ static uint8_t state_idle(void)
     }
 
     uint8_t atqa[2];
-    RC522_Status status = rfid_rc522_request(atqa);
+    RC522_Status status = rfid_rc522_request(&rfID, atqa);
     
     /* Display raw ATQA for debugging */
     uart_send_string("[IDLE] ATQA raw: ");
@@ -198,14 +195,14 @@ static void state_streaming(void)
     uart_send_string("[STREAM] Reading card UID...\r\n");
 
     /* Perform anticollision */
-    RC522_Status status = rfid_rc522_anticoll(&current_uid);
+    RC522_Status status = rfid_rc522_anticoll(&rfID, &current_uid);
     
     if (status == RC522_STATUS_OK) {
         /* Small delay before select */
         for (volatile int i = 0; i < 1000; i++) { }
         
         /* Perform SELECT to get SAK */
-        status = rfid_rc522_select(&current_uid);
+        status = rfid_rc522_select(&rfID, &current_uid);
         
         uart_send_string("[STREAM] UID: ");
         for (int i = 0; i < current_uid.size; i++) {
@@ -269,7 +266,7 @@ int main(void)
                 
                 if (result == INIT_OK) {
                     uart_send_string("[MAIN] Init successful -> VERIFY\r\n");
-                    current_state = STATE_VERIFY;
+                    // current_state = STATE_VERIFY;
                 } else {
                     uart_send_string("[MAIN] Init failed -> retry INIT\r\n");
                     for (volatile int i = 0; i < 1000000; i++) { }

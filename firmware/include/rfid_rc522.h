@@ -16,17 +16,17 @@
 
 /* Page 0 : Commandes et status */
 #define RC522_REG_RESERVED_00      0x00
-#define RC522_REG_COMMAND          0x01
+#define RC522_REG_COMMAND          0x01   // Adresse du registre de commande
 #define RC522_REG_COMM_IE_N        0x02
 #define RC522_REG_DIV_IE_N         0x03
-#define RC522_REG_COMM_IRQ         0x04
+#define RC522_REG_COMM_IRQ         0x04   // Adresse du registre d'interruption de communication
 #define RC522_REG_DIV_IRQ          0x05
-#define RC522_REG_ERROR            0x06
-#define RC522_REG_STATUS_2         0x08
-#define RC522_REG_FIFO_DATA        0x09
-#define RC522_REG_FIFO_LEVEL       0x0A
-#define RC522_REG_CONTROL          0x0C
-#define RC522_REG_BIT_FRAMING      0x0D
+#define RC522_REG_ERROR            0x06   // Adresse du registre d'erreur
+#define RC522_REG_STATUS_2         0x08   // Adresse du registre d'état 2 du RC522 (temp, ...) 
+#define RC522_REG_FIFO_DATA        0x09   // Adresse du registre de données du buffer FIFO
+#define RC522_REG_FIFO_LEVEL       0x0A   // Adresse du registre indiquant le nbr d'octets dans le FIFO
+#define RC522_REG_CONTROL          0x0C    
+#define RC522_REG_BIT_FRAMING      0x0D   // Adresse du registre de configuration du cadrage des bits
 #define RC522_REG_COLL             0x0E
 
 /* Page 1 : Mode */
@@ -34,8 +34,8 @@
 #define RC522_REG_MODE             0x11
 #define RC522_REG_TX_MODE          0x12
 #define RC522_REG_RX_MODE          0x13
-#define RC522_REG_TX_CONTROL       0x14
-#define RC522_REG_TX_ASK           0x15
+#define RC522_REG_TX_CONTROL       0x14   // Adresse du registre de contrôle de l'emetteur (antenne TX) 
+#define RC522_REG_TX_ASK           0x15   // Adresse du registre de configuration de la transmission automatique
 #define RC522_REG_TX_CRC_PSEL      0x16
 #define RC522_REG_RX_CRC_PSEL      0x17
 #define RC522_REG_TX_CRC_INIT0     0x18
@@ -44,9 +44,18 @@
 
 /* Page 2 : RF */
 #define RC522_REG_RESERVED_20      0x20
-#define RC522_REG_RX_GAIN          0x26
+#define RC522_REG_RX_GAIN          0x26   // Adresse du registre de configuration du gain du récepteur RF
 #define RC522_REG_DEMOD            0x27
 
+/*  Configuration du timer   */
+#define RC522_REG_TMode            0x2A   // Adresse du registre de configuration du mode du timer
+#define RC522_REG_TPrescaler       0x2B   // Adresse du registre du prescaler du timer interne
+#define RC522_REG_TReloadL         0x2C   // Adresse du registre de rechargement bas (octet faible) du timer
+#define RC522_REG_TReloadH         0x2D   // Adresse du registre de rechargement haut (octet fort) du timer
+                                          
+#define RC522_REG_Demod            0x19   // Adresse du registre de configuration du démodulateur 
+#define RC522_REG_ModWidth         0x24   // Adresse du registre de configuration de la largeur
+#define RC522_REG_GsN              0x27   // Adresse du registre de la conductance de l'émetteur RF
 /* Page 3 : TypeB */
 #define RC522_REG_RESERVED_30      0x30
 
@@ -66,38 +75,38 @@
 #define RC522_REG_TEST_PIN_OUT     0x34
 #define RC522_REG_TEST_BUS         0x35
 #define RC522_REG_AUTO_TEST        0x36
-#define RC522_REG_VERSION           0x37
-#define RC522_REG_ANALOG_TEST       0x38
+#define RC522_REG_VERSION          0x37   // Adresse du registre contenant la version du chip RC522
+#define RC522_REG_ANALOG_TEST      0x38
 #define RC522_REG_TEMP_SENSOR      0x39
 #define RC522_REG_TEST_BUS_AUTO    0x3A
 
 /* ============================================================================
  * COMMANDES PCD (MFRC522 Commands)
  * ============================================================================ */
-#define RC522_PCD_IDLE              0x00  /* Pas d'action, annule les commandes */
+#define RC522_PCD_IDLE              0x00  // Commande pour mettre le RC en mode inactif 
 #define RC522_PCD_MEM              0x01  /* Transfert FIFO → buffer interne */
 #define RC522_PCD_GENERATE_RANDOMID 0x02 /* Génère un ID aléatoire */
 #define RC522_PCD_CALC_CRC         0x03  /* Calcul CRC */
 #define RC522_PCD_TRANSMIT         0x04  /* Envoie des données de la FIFO */
 #define RC522_PCD_NO_CHANGE        0x07  /* Pas de changement */
 #define RC522_PCD_RECEIVE          0x08  /* Réception de données */
-#define RC522_PCD_TRANSCEIVE       0x0C  /* Envoie + attend réponse */
+#define RC522_PCD_TRANSCEIVE       0x0C  // Commande pour émettre et recevoir des données via l'antenne RF
 #define RC522_PCD_AUTHENT          0x0E  /* Authentification MIFARE */
-#define RC522_PCD_RESET            0x0F  /* Soft reset */
+#define RC522_PCD_RESET            0x0F  // Commande pour effectuer une réinitialisation logicielle du RC522
 
 /* ============================================================================
  * COMMANDES PICC (ISO/IEC 14443-3 Type A)
  * ============================================================================ */
-#define PICC_CMD_REQA               0x26  /* Demande inactive */
-#define PICC_CMD_WUPA               0x52  /* Wake-up all */
-#define PICC_CMD_ANTICOLL_1        0x93  /* Anti-collision CL1 */
+#define PICC_CMD_REQA              0x26  // Commande REQA pour demander la présence d'une carte RFID
+#define PICC_CMD_WUPA              0x52  /* Wake-up all */
+#define PICC_CMD_ANTICOLL_1        0x93  // Commande de sélection de la cascade level 1 (anticollision)
 #define PICC_CMD_SELECT_CL1        0x93  /* Sélection CL1 */
 #define PICC_CMD_ANTICOLL_2        0x95  /* Anti-collision CL2 */
 #define PICC_CMD_SELECT_CL2        0x95  /* Sélection CL2 */
 #define PICC_CMD_ANTICOLL_3        0x97  /* Anti-collision CL3 */
 #define PICC_CMD_SELECT_CL3        0x97  /* Sélection CL3 */
-#define PICC_CMD_HLTA               0x50  /* Halt */
-#define PICC_CMD_RATS               0xE0  /* Request ATS (Type A) */
+#define PICC_CMD_HLTA              0x50  /* Halt */
+#define PICC_CMD_RATS              0xE0  /* Request ATS (Type A) */
 
 /* Commandes MIFARE Classic */
 #define PICC_CMD_MIFARE_READ        0x30  /* Lecture bloc */
@@ -114,7 +123,7 @@
  * ============================================================================ */
 typedef enum {
     RC522_STATUS_OK = 0,
-    RC522_STATUS_ERROR,
+    RC522_STATUS_ERROR = 1,
     RC522_STATUS_COLLISION,
     RC522_STATUS_TIMEOUT,
     RC522_STATUS_NO_ROOM,
@@ -177,6 +186,17 @@ typedef struct {
     uint8_t data_size;
 } RC522_BlockData;
 
+
+/**
+ * @brief utilise les macros de spi/cs/rst 
+ */
+typedef struct {
+    uint32_t cs_Port;
+    uint16_t cs_Pin;
+    uint32_t rst_Port;
+    uint16_t rst_Pin;
+} MFRC522_t;
+
 /* ============================================================================
  * FONCTIONS PUBLIQUES DU DRIVER
  * ============================================================================ */
@@ -186,23 +206,23 @@ typedef struct {
  *        Configure le SPI, effectue un reset logiciel et vérifie la connexion.
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
-RC522_Status rfid_rc522_init(void);
+RC522_Status rfid_rc522_init(MFRC522_t *dev);
 
 /**
  * @brief Reset logiciel du module RC522.
  */
-void rfid_rc522_reset(void);
+void rfid_rc522_reset(MFRC522_t *dev);
 
 /**
  * @brief Active l'antenne RF.
  * @return RC522_STATUS_OK si succès.
  */
-RC522_Status rfid_rc522_antenna_on(void);
+RC522_Status rfid_rc522_antenna_on(MFRC522_t *dev);
 
 /**
  * @brief Désactive l'antenne RF.
  */
-void rfid_rc522_antenna_off(void);
+void rfid_rc522_antenna_off(MFRC522_t *dev);
 
 /**
  * @brief Lit la version du firmware du RC522.
@@ -215,21 +235,21 @@ uint8_t rfid_rc522_get_version(void);
  * @param[out] atqa Buffer pour ATQA (2 bytes).
  * @return RC522_STATUS_OK si carte détectée.
  */
-RC522_Status rfid_rc522_request(uint8_t *atqa);
+RC522_Status rfid_rc522_request(MFRC522_t *dev, uint8_t *atqa);
 
 /**
  * @brief Effectue l'anti-collision et récupère l'UID de la carte.
  * @param[out] uid Structure pour stocker l'UID.
  * @return RC522_STATUS_OK si succès.
  */
-RC522_Status rfid_rc522_anticoll(RC522_UID *uid);
+RC522_Status rfid_rc522_anticoll(MFRC522_t *dev, RC522_UID *uid);
 
 /**
  * @brief Sélectionne la carte avec son UID.
  * @param[in] uid UID de la carte à sélectionner.
  * @return RC522_STATUS_OK si succès.
  */
-RC522_Status rfid_rc522_select(RC522_UID *uid);
+RC522_Status rfid_rc522_select(MFRC522_t *dev, RC522_UID *uid);
 
 /**
  * @brief Authentifie un bloc avec une clé MIFARE.
@@ -239,7 +259,7 @@ RC522_Status rfid_rc522_select(RC522_UID *uid);
  * @param uid UID de la carte.
  * @return RC522_STATUS_OK si succès.
  */
-RC522_Status rfid_rc522_auth(uint8_t block, uint8_t key_type,
+RC522_Status rfid_rc522_auth(MFRC522_t *dev, uint8_t block, uint8_t key_type,
                               const RC522_Key *key, const RC522_UID *uid);
 
 /**
@@ -248,7 +268,7 @@ RC522_Status rfid_rc522_auth(uint8_t block, uint8_t key_type,
  * @param[out] data Buffer pour les données lues (16 bytes).
  * @return RC522_STATUS_OK si succès.
  */
-RC522_Status rfid_rc522_read_block(uint8_t block, uint8_t *data);
+RC522_Status rfid_rc522_read_block(MFRC522_t *dev, uint8_t block, uint8_t *data);
 
 /**
  * @brief Écrit un bloc MIFARE Classic.
@@ -256,12 +276,12 @@ RC522_Status rfid_rc522_read_block(uint8_t block, uint8_t *data);
  * @param data Données à écrire (16 bytes).
  * @return RC522_STATUS_OK si succès.
  */
-RC522_Status rfid_rc522_write_block(uint8_t block, const uint8_t *data);
+RC522_Status rfid_rc522_write_block(MFRC522_t *dev, uint8_t block, const uint8_t *data);
 
 /**
  * @brief Arrête la communication avec la carte (halt).
  */
-void rfid_rc522_halt(void);
+void rfid_rc522_halt(MFRC522_t *dev);
 
 /**
  * @brief Renvoie le dernier code d'erreur du module.
@@ -280,7 +300,7 @@ uint8_t rfid_rc522_get_crypto_status(void);
  * @param addr Adresse du registre.
  * @param value Valeur à écrire.
  */
-void rfid_rc522_write_reg(uint8_t addr, uint8_t value);
+void rfid_rc522_write_reg(MFRC522_t *dev, uint8_t addr, uint8_t value);
 
 /**
  * @brief Lit un octet depuis un registre du RC522.
