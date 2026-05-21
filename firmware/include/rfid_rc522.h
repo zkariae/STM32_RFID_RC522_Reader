@@ -339,6 +339,14 @@ void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
 uint8_t rfid_rc522_PollCard(MFRC522_t *dev);
 
 /**
+ * @brief Envoie une commande REQA et récupère l'ATQA de la carte.
+ * @param[in] dev Pointeur vers la structure MFRC522.
+ * @param[out] atqa Buffer de 2 octets recevant l'ATQA.
+ * @return RC522_STATUS_OK si une carte répond, sinon code d'erreur.
+ */
+uint8_t rfid_rc522_RequestA(MFRC522_t *dev, uint8_t *atqa);
+
+/**
  * @brief Réinitialise le module MFRC522 après une erreur ou un blocage.
  * @param[in] dev Pointeur vers la structure MFRC522 (périphérique cible).
  */
@@ -359,6 +367,13 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid);
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
 uint8_t rfid_rc522_ReadUid(MFRC522_t *dev, uint8_t *uid);
+
+/**
+ * @brief Attend le retrait de la carte RFID.
+ * @param[in] dev Pointeur vers la structure MFRC522.
+ * @return RC522_STATUS_OK si la carte est retirée, sinon code d'erreur.
+ */
+uint8_t waitcardRemoval(MFRC522_t *dev);
 
 
 

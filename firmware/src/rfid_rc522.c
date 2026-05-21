@@ -29,12 +29,6 @@
 #define RC522_WRITE_ADDR(addr)     ((addr << 1) & 0x7E)
 
 /* ============================================================================
- * VARIABLES STATIQUES
- * ============================================================================ */
-
-static uint8_t _error_code = 0;
-
-/* ============================================================================
  * FONCTIONS DE BASE : LECTURE/ÉCRITURE REGISTRES
  * ============================================================================ */
 
@@ -117,6 +111,50 @@ RC522_Status rfid_rc522_init(MFRC522_t *dev)
         LOG_INFO("RC522 initialisé");
         return RC522_STATUS_OK;
     } 
+}
+
+/**
+ * @brief  Attend le retrait de la carte en sondant périodiquement sa présence via REQA.
+ *         3 échecs consécutifs confirment le retrait effectif, puis nettoie l'état du module.
+ * @param  dev  Pointeur vers le périphérique MFRC522.
+ * @return RC522_STATUS_OK une fois la carte retirée.
+ */
+uint8_t waitcardRemoval(MFRC522_t *dev)
+{
+    LOG_INFO("Waiting for card removal...");
+    uint8_t atqa[2];
+    uint8_t missCount = 0; // Compteur d'échecs consécutifs de détection
+    uint32_t timeout = systick_get_tick() + 10000; // 10 seconds max
+    while (1)
+    {
+        if (systick_get_tick() > timeout)
+        {
+            LOG_DEBUG("Card removal timeout ");
+            return RC522_STATUS_ERROR; // Carte non retitée dans le temps        
+        }
+
+        if (rfid_rc522_RequestA(dev, atqa) != RC522_STATUS_OK)
+        {
+            missCount++;
+            if (missCount >= 3) // 3 timeouts consécutifs = carte vraiment retirée
+            {
+                // Nettoyage : commande Idle, reset IRQ et FIFO
+                rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+                rfid_rc522_write_reg(dev, RC522_REG_COMM_IRQ, 0x7F);
+                rfid_rc522_write_reg(dev, RC522_REG_FIFO_LEVEL, 0x80);
+                // Désactive le chiffrement si une session crypto était active
+                rfid_rc522_ClearBitMask(dev, RC522_REG_STATUS_2, 0x08); // MFCrypto1On = 0
+                LOG_INFO("Card removed");
+                return RC522_STATUS_OK;
+            }
+        }
+        else
+        {
+            missCount = 0; // Carte toujours présente, reset du compteur
+        }
+
+        delay_ms(100); // Sondage toutes les 100 ms
+    }
 }
 
 /* Envoie une commande REQA et récupère l'ATQA (2 octets) de la carte.
