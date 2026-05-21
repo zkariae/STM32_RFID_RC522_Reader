@@ -33,9 +33,6 @@ typedef enum {
  * ============================================================================ */
 
 static State current_state = STATE_INIT;
-static uint8_t version_ok = 0;
-static RC522_UID current_uid;
-static uint8_t card_detected = 0;
 
 /* ============================================================================
  * STRUCTURES
@@ -72,16 +69,6 @@ static InitResult state_init(void)
 }
 
 /**
- * @brief State: Verify RC522 by reading version register
- */
-static uint8_t state_verify(void)
-{
-    return 1;
-}
-
-
-
-/**
  * @brief State: Idle - wait for card detection
  */
 static uint8_t state_idle(void)
@@ -111,9 +98,31 @@ static uint8_t state_idle(void)
 /**
  * @brief State: Streaming - read and display card UID
  */
-static void state_streaming(void)
+static uint8_t state_streaming(void)
 {
-    uart_send_string("\r\n=== STATE: STREAMING ===\r\n");
+    uint8_t uid[4];
+
+    if(rfid_rc522_ReadUid(&rfID, uid) == RC522_STATUS_OK)
+    {
+            if ((uid[0] == 0xAB) && (uid[1] == 0x82) && (uid[2] == 0xBB) && (uid[3] == 0x1C))
+            {
+                LOG_DEBUG(" MIFARE Classic 1K card detected ");
+            }
+            else if ((uid[0] == 0x5A) && (uid[1] == 0xDA) && (uid[2] == 0x32) && (uid[3] == 0x16))
+            {
+                LOG_DEBUG(" MIFARE Classic 4K card detected ");
+            }
+            else
+            { 
+                LOG_DEBUG("UNKNOWN CARD");
+            } 
+            return RC522_STATUS_OK;
+    }
+    else 
+    {
+                LOG_DEBUG(" UID READ ERROR ");
+                return RC522_STATUS_ERROR;
+    }
 }
 
 /* ============================================================================
@@ -134,8 +143,6 @@ int main(void)
 
     /* Initialize state */
     current_state = STATE_INIT;
-    version_ok = 0;
-    card_detected = 0;
 
     /* Main state machine loop */
     while (1) {
@@ -190,10 +197,18 @@ int main(void)
             case STATE_STREAMING:
             /* ======================================== */
             {
-                state_streaming();
                 uart_send_string("\r\n>>> STATE: STREAMING\r\n");
                 delay_ms(1000);
-                current_state = STATE_IDLE;
+                state_streaming();
+                uint8_t result = waitcardRemoval(&rfID);
+                if(result == RC522_STATUS_OK)
+                {
+                    current_state = STATE_IDLE;                
+                }
+                else
+                {
+                    current_state = STATE_INIT;
+                }
                 break;
             }
             
