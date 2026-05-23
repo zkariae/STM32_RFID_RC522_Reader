@@ -124,18 +124,8 @@ a * @file rfid_rc522.h
 typedef enum {
     RC522_STATUS_OK = 0,
     RC522_STATUS_ERROR = 1,
-    RC522_STATUS_COLLISION,
     RC522_STATUS_TIMEOUT = 2,
-    RC522_STATUS_NO_ROOM,
-    RC522_STATUS_INTERNAL_ERROR,
-    RC522_STATUS_INVALID = 3,
-    RC522_STATUS_CRC_WRONG,
-    RC522_STATUS_MIFARE_AUTH_ERROR,
-    RC522_STATUS_BITCOUNT_FRAMING,
-    RC522_STATUS_BITFRAMING_ERROR,
-    RC522_STATUS_ABORTED,
-    RC522_STATUS_INVALID_UID,
-    RC522_STATUS_NOT_IMPLEMENTED
+    RC522_STATUS_INVALID = 3
 } RC522_Status;
 
 /* ============================================================================
@@ -336,7 +326,7 @@ void rfid_rc522_clear_bit_mask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
  * @return STATUS_OK      Une carte a répondu à la requête REQA.
  * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
  */
-uint8_t rfid_rc522_poll_card(MFRC522_t *dev);
+RC522_Status rfid_rc522_poll_card(MFRC522_t *dev);
 
 /**
  * @brief Envoie une commande REQA et récupère l'ATQA de la carte.
@@ -344,7 +334,7 @@ uint8_t rfid_rc522_poll_card(MFRC522_t *dev);
  * @param[out] atqa Buffer de 2 octets recevant l'ATQA.
  * @return RC522_STATUS_OK si une carte répond, sinon code d'erreur.
  */
-uint8_t rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa);
+RC522_Status rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa);
 
 /**
  * @brief Réinitialise le module MFRC522 après une erreur ou un blocage.
@@ -358,7 +348,7 @@ void rfid_rc522_recover(MFRC522_t *dev);
  * @param[out] uid Buffer de 5 octets : UID[0..3] + BCC.
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
-uint8_t rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid);
+RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid);
 
 /**
  * @brief Lit l'UID 4 octets d'une carte RFID.
@@ -366,14 +356,14 @@ uint8_t rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid);
  * @param[out] uid Buffer de 4 octets recevant l'UID.
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
-uint8_t rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid);
+RC522_Status rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid);
 
 /**
  * @brief Attend le retrait de la carte RFID.
  * @param[in] dev Pointeur vers la structure MFRC522.
  * @return RC522_STATUS_OK si la carte est retirée, sinon code d'erreur.
  */
-uint8_t rfid_rc522_wait_card_removal(MFRC522_t *dev);
+RC522_Status rfid_rc522_wait_card_removal(MFRC522_t *dev);
 
 
 

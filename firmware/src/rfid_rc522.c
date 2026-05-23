@@ -119,7 +119,7 @@ RC522_Status rfid_rc522_init(MFRC522_t *dev)
  * @param  dev  Pointeur vers le périphérique MFRC522.
  * @return RC522_STATUS_OK une fois la carte retirée.
  */
-uint8_t rfid_rc522_wait_card_removal(MFRC522_t *dev)
+RC522_Status rfid_rc522_wait_card_removal(MFRC522_t *dev)
 {
     LOG_INFO("Waiting for card removal...");
     uint8_t atqa[2];
@@ -159,7 +159,7 @@ uint8_t rfid_rc522_wait_card_removal(MFRC522_t *dev)
 
 /* Envoie une commande REQA et récupère l'ATQA (2 octets) de la carte.
  * Retourne STATUS_OK si une carte valide répond, STATUS_ERROR ou STATUS_TIMEOUT sinon. */
-uint8_t rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa) {
+RC522_Status rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa) {
     LOG_DEBUG("RequestA");
 
     /* Réinitialisation : arrêt, clear IRQ, flush FIFO */
@@ -279,7 +279,7 @@ void rfid_rc522_antenna_on(MFRC522_t *dev) {
  * @return STATUS_OK      Une carte a répondu à la requête REQA.
  * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
  */
-uint8_t rfid_rc522_poll_card(MFRC522_t *dev)
+RC522_Status rfid_rc522_poll_card(MFRC522_t *dev)
 {
     uint8_t atqa[2];
     rfid_rc522_write_reg(dev,    RC522_REG_COMMAND,      RC522_PCD_IDLE);
@@ -312,7 +312,7 @@ void rfid_rc522_recover(MFRC522_t *dev)
  * @param  uid  Buffer de sortie (5 octets) : uid[0..3] = UID, uid[4] = BCC.
  * @return STATUS_OK en cas de succès, STATUS_ERROR si erreur RF, BCC invalide ou timeout.
  */
-uint8_t rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
+RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
     LOG_DEBUG("Anticoll");
 
     // Préparation du module : reset des IRQ, vidage FIFO, trame complète
@@ -399,7 +399,7 @@ uint8_t rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
  * @param  uid  Buffer de sortie (4 octets) recevant l'UID de la carte.
  * @return STATUS_OK en cas de succès, STATUS_ERROR sinon.
  */
-uint8_t rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid) {
+RC522_Status rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid) {
     LOG_DEBUG("Reading UID...");
 
     uint8_t rawUid[5]; // 4 octets UID + 1 octet BCC

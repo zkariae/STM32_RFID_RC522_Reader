@@ -73,7 +73,7 @@ static InitResult state_init(void)
 /**
  * @brief State: Idle - wait for card detection
  */
-static uint8_t state_idle(void)
+static RC522_Status state_idle(void)
 {
    static uint8_t timeoutCount = 0;
    if (rfid_rc522_poll_card(&rfID) == RC522_STATUS_OK)
@@ -102,7 +102,7 @@ static uint8_t state_idle(void)
 /**
  * @brief State: Streaming - read and display card UID
  */
-static uint8_t state_streaming(void)
+static RC522_Status state_streaming(void)
 {
     uint8_t uid[4];
 
@@ -188,7 +188,7 @@ int main(void)
             {
                 /* Check for card without printing state constantly */
                 uart_send_string("\r\n>>> STATE: IDLE\r\n");
-                uint8_t result = state_idle();
+                RC522_Status result = state_idle();
                 if(result == RC522_STATUS_OK)
                 {
                     current_state = STATE_STREAMING;
@@ -207,7 +207,7 @@ int main(void)
             {
                 uart_send_string("\r\n>>> STATE: STREAMING\r\n");
                 state_streaming();
-                uint8_t result = rfid_rc522_wait_card_removal(&rfID);
+                RC522_Status result = rfid_rc522_wait_card_removal(&rfID);
                 if(result == RC522_STATUS_OK)
                 {
                     current_state = STATE_IDLE;                
