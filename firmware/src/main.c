@@ -61,10 +61,12 @@ static InitResult state_init(void)
     
     if (status == RC522_STATUS_OK) {
         uart_send_string("[INIT] Driver initialization OK\r\n");
+        delay_ms(2000);
         return INIT_OK;
     } else {
         uart_send_string("[INIT] Driver initialization FAILED\r\n");
         return INIT_FAILED;
+        delay_ms(2000);
     }
 }
 
@@ -74,21 +76,23 @@ static InitResult state_init(void)
 static uint8_t state_idle(void)
 {
    static uint8_t timeoutCount = 0;
-   if (rfid_rc522_PollCard(&rfID) == RC522_STATUS_OK)
+   if (rfid_rc522_poll_card(&rfID) == RC522_STATUS_OK)
    {
        timeoutCount = 0; // Reset compteur si carte détectée
        LOG_DEBUG("Card detected");
+       delay_ms(2000);
        return RC522_STATUS_OK;
    }
    else
    {
        timeoutCount++;
-       LOG_DEBUG_INT("Card not detected, timeout count = %d", timeoutCount);
+       LOG_DEBUG_INT("Card not detected, timeout count = ", timeoutCount);
        if(timeoutCount >= MAX_TIMEOUT_COUNT)
        {    
            timeoutCount = 0;
            LOG_INFO("MFRC522 stuck, recovering...");
-           rfid_rc522_Recover(&rfID);
+           delay_ms(2000);
+           rfid_rc522_recover(&rfID);
        }
        delay_ms(100);  /* Poll toutes les 100ms */
        return RC522_STATUS_INVALID;
@@ -102,25 +106,29 @@ static uint8_t state_streaming(void)
 {
     uint8_t uid[4];
 
-    if(rfid_rc522_ReadUid(&rfID, uid) == RC522_STATUS_OK)
+    if(rfid_rc522_read_uid(&rfID, uid) == RC522_STATUS_OK)
     {
             if ((uid[0] == 0xAB) && (uid[1] == 0x82) && (uid[2] == 0xBB) && (uid[3] == 0x1C))
             {
                 LOG_DEBUG(" MIFARE Classic 1K card detected ");
+                delay_ms(5000);
             }
             else if ((uid[0] == 0x5A) && (uid[1] == 0xDA) && (uid[2] == 0x32) && (uid[3] == 0x16))
             {
                 LOG_DEBUG(" MIFARE Classic 4K card detected ");
+                delay_ms(5000);
             }
             else
             { 
                 LOG_DEBUG("UNKNOWN CARD");
+                delay_ms(5000);
             } 
             return RC522_STATUS_OK;
     }
     else 
     {
                 LOG_DEBUG(" UID READ ERROR ");
+                delay_ms(5000);
                 return RC522_STATUS_ERROR;
     }
 }
@@ -198,9 +206,8 @@ int main(void)
             /* ======================================== */
             {
                 uart_send_string("\r\n>>> STATE: STREAMING\r\n");
-                delay_ms(1000);
                 state_streaming();
-                uint8_t result = waitcardRemoval(&rfID);
+                uint8_t result = rfid_rc522_wait_card_removal(&rfID);
                 if(result == RC522_STATUS_OK)
                 {
                     current_state = STATE_IDLE;                

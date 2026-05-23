@@ -220,12 +220,12 @@ void rfid_rc522_reset(MFRC522_t *dev);
  * @brief Active l'antenne RF.
  * @return RC522_STATUS_OK si succès.
  */
-void rfid_rc522_AntennaOn(MFRC522_t *dev);
+void rfid_rc522_antenna_on(MFRC522_t *dev);
 
 /**
  * @brief Désactive l'antenne RF.
  */
-void rfid_rc522_AntennaOff(MFRC522_t *dev);
+void rfid_rc522_antenna_off(MFRC522_t *dev);
 
 /**
  * @brief Lit la version du firmware du RC522.
@@ -322,7 +322,7 @@ uint8_t rfid_rc522_read_reg(MFRC522_t *dev, uint8_t addr);
  *
  * @return void
  */
-void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
+void rfid_rc522_clear_bit_mask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
 
 
 /**
@@ -336,7 +336,7 @@ void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
  * @return STATUS_OK      Une carte a répondu à la requête REQA.
  * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
  */
-uint8_t rfid_rc522_PollCard(MFRC522_t *dev);
+uint8_t rfid_rc522_poll_card(MFRC522_t *dev);
 
 /**
  * @brief Envoie une commande REQA et récupère l'ATQA de la carte.
@@ -344,13 +344,13 @@ uint8_t rfid_rc522_PollCard(MFRC522_t *dev);
  * @param[out] atqa Buffer de 2 octets recevant l'ATQA.
  * @return RC522_STATUS_OK si une carte répond, sinon code d'erreur.
  */
-uint8_t rfid_rc522_RequestA(MFRC522_t *dev, uint8_t *atqa);
+uint8_t rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa);
 
 /**
  * @brief Réinitialise le module MFRC522 après une erreur ou un blocage.
  * @param[in] dev Pointeur vers la structure MFRC522 (périphérique cible).
  */
-void rfid_rc522_Recover(MFRC522_t *dev);
+void rfid_rc522_recover(MFRC522_t *dev);
 
 /**
  * @brief Exécute l'anticollision ISO 14443-A et récupère UID + BCC.
@@ -358,7 +358,7 @@ void rfid_rc522_Recover(MFRC522_t *dev);
  * @param[out] uid Buffer de 5 octets : UID[0..3] + BCC.
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
-uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid);
+uint8_t rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid);
 
 /**
  * @brief Lit l'UID 4 octets d'une carte RFID.
@@ -366,14 +366,14 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid);
  * @param[out] uid Buffer de 4 octets recevant l'UID.
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
-uint8_t rfid_rc522_ReadUid(MFRC522_t *dev, uint8_t *uid);
+uint8_t rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid);
 
 /**
  * @brief Attend le retrait de la carte RFID.
  * @param[in] dev Pointeur vers la structure MFRC522.
  * @return RC522_STATUS_OK si la carte est retirée, sinon code d'erreur.
  */
-uint8_t waitcardRemoval(MFRC522_t *dev);
+uint8_t rfid_rc522_wait_card_removal(MFRC522_t *dev);
 
 
 

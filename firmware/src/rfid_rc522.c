@@ -119,7 +119,7 @@ RC522_Status rfid_rc522_init(MFRC522_t *dev)
  * @param  dev  Pointeur vers le périphérique MFRC522.
  * @return RC522_STATUS_OK une fois la carte retirée.
  */
-uint8_t waitcardRemoval(MFRC522_t *dev)
+uint8_t rfid_rc522_wait_card_removal(MFRC522_t *dev)
 {
     LOG_INFO("Waiting for card removal...");
     uint8_t atqa[2];
@@ -133,7 +133,7 @@ uint8_t waitcardRemoval(MFRC522_t *dev)
             return RC522_STATUS_ERROR; // Carte non retitée dans le temps        
         }
 
-        if (rfid_rc522_RequestA(dev, atqa) != RC522_STATUS_OK)
+        if (rfid_rc522_request_a(dev, atqa) != RC522_STATUS_OK)
         {
             missCount++;
             if (missCount >= 3) // 3 timeouts consécutifs = carte vraiment retirée
@@ -143,7 +143,7 @@ uint8_t waitcardRemoval(MFRC522_t *dev)
                 rfid_rc522_write_reg(dev, RC522_REG_COMM_IRQ, 0x7F);
                 rfid_rc522_write_reg(dev, RC522_REG_FIFO_LEVEL, 0x80);
                 // Désactive le chiffrement si une session crypto était active
-                rfid_rc522_ClearBitMask(dev, RC522_REG_STATUS_2, 0x08); // MFCrypto1On = 0
+                rfid_rc522_clear_bit_mask(dev, RC522_REG_STATUS_2, 0x08); // MFCrypto1On = 0
                 LOG_INFO("Card removed");
                 return RC522_STATUS_OK;
             }
@@ -159,7 +159,7 @@ uint8_t waitcardRemoval(MFRC522_t *dev)
 
 /* Envoie une commande REQA et récupère l'ATQA (2 octets) de la carte.
  * Retourne STATUS_OK si une carte valide répond, STATUS_ERROR ou STATUS_TIMEOUT sinon. */
-uint8_t rfid_rc522_RequestA(MFRC522_t *dev, uint8_t *atqa) {
+uint8_t rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa) {
     LOG_DEBUG("RequestA");
 
     /* Réinitialisation : arrêt, clear IRQ, flush FIFO */
@@ -229,7 +229,7 @@ uint8_t rfid_rc522_RequestA(MFRC522_t *dev, uint8_t *atqa) {
  *
  * @return void
  */
-void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask)
+void rfid_rc522_clear_bit_mask(MFRC522_t *dev, uint8_t reg, uint8_t mask)
 {
     uint8_t tmp = rfid_rc522_read_reg(dev, reg);
     rfid_rc522_write_reg(dev, reg, tmp & (~mask));
@@ -243,7 +243,7 @@ void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask)
  * @param  reg   Adresse du registre cible.
  * @param  mask  Masque de bits à forcer à 1 (opération OR).
  */
-void rfid_rc522_SetBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask) {
+void rfid_rc522_set_bit_mask(MFRC522_t *dev, uint8_t reg, uint8_t mask) {
     uint8_t tmp = rfid_rc522_read_reg(dev, reg); // Lecture de la valeur actuelle du registre
     rfid_rc522_write_reg(dev, reg, tmp | mask);  // Fusion par OR : force les bits du mask à 1
     LOG_DEBUG_HEX("SetBitMask reg: ", reg);
@@ -254,8 +254,8 @@ void rfid_rc522_SetBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask) {
  * @brief  Éteint l'antenne RF en désactivant les pilotes Tx1 et Tx2.
  * @param  dev  Pointeur vers le périphérique MFRC522.
  */
-void rfid_rc522_AntennaOff(MFRC522_t *dev) {
-    rfid_rc522_ClearBitMask(dev, RC522_REG_TX_CONTROL, 0x03); // Bits 0-1 à 0 : désactive Tx1 et Tx2
+void rfid_rc522_antenna_off(MFRC522_t *dev) {
+    rfid_rc522_clear_bit_mask(dev, RC522_REG_TX_CONTROL, 0x03); // Bits 0-1 à 0 : désactive Tx1 et Tx2
     LOG_DEBUG("Antenna off");
 }
 
@@ -263,8 +263,8 @@ void rfid_rc522_AntennaOff(MFRC522_t *dev) {
  * @brief  Allume l'antenne RF en activant les pilotes Tx1 et Tx2.
  * @param  dev  Pointeur vers le périphérique MFRC522.
  */
-void rfid_rc522_AntennaOn(MFRC522_t *dev) {
-    rfid_rc522_SetBitMask(dev, RC522_REG_TX_CONTROL, 0x03); // Bits 0-1 à 1 : active Tx1 et Tx2
+void rfid_rc522_antenna_on(MFRC522_t *dev) {
+    rfid_rc522_set_bit_mask(dev, RC522_REG_TX_CONTROL, 0x03); // Bits 0-1 à 1 : active Tx1 et Tx2
     LOG_DEBUG("Antenna on");
 }
 
@@ -279,14 +279,14 @@ void rfid_rc522_AntennaOn(MFRC522_t *dev) {
  * @return STATUS_OK      Une carte a répondu à la requête REQA.
  * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
  */
-uint8_t rfid_rc522_PollCard(MFRC522_t *dev)
+uint8_t rfid_rc522_poll_card(MFRC522_t *dev)
 {
     uint8_t atqa[2];
     rfid_rc522_write_reg(dev,    RC522_REG_COMMAND,      RC522_PCD_IDLE);
     rfid_rc522_write_reg(dev,    RC522_REG_COMM_IRQ,     0x7F);
     rfid_rc522_write_reg(dev,    RC522_REG_FIFO_LEVEL,   0x80);
-    rfid_rc522_ClearBitMask(dev, RC522_REG_STATUS_2,     0x08);
-    return rfid_rc522_RequestA(dev, atqa);
+    rfid_rc522_clear_bit_mask(dev, RC522_REG_STATUS_2,     0x08);
+    return rfid_rc522_request_a(dev, atqa);
 }
 
 /**
@@ -295,13 +295,13 @@ uint8_t rfid_rc522_PollCard(MFRC522_t *dev)
  *        l'initialisation complète et réactive l'antenne.
  * @param dev Pointeur vers la structure du périphérique MFRC522.
  */
-void rfid_rc522_Recover(MFRC522_t *dev)
+void rfid_rc522_recover(MFRC522_t *dev)
 {
     LOG_DEBUG("MFRC522 recovering...");
     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_RESET); // Soft reset matériel
     delay_ms(50);                                                 // Attente stabilisation (≥50 ms)
     (void)rfid_rc522_init(dev);                                   // Réinitialisation complète
-    rfid_rc522_AntennaOn(dev);                                    // Réactivation de l'antenne RF
+    rfid_rc522_antenna_on(dev);                                   // Réactivation de l'antenne RF
     LOG_DEBUG("MFRC522 recovered");
 }
 
@@ -312,7 +312,7 @@ void rfid_rc522_Recover(MFRC522_t *dev)
  * @param  uid  Buffer de sortie (5 octets) : uid[0..3] = UID, uid[4] = BCC.
  * @return STATUS_OK en cas de succès, STATUS_ERROR si erreur RF, BCC invalide ou timeout.
  */
-uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid) {
+uint8_t rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
     LOG_DEBUG("Anticoll");
 
     // Préparation du module : reset des IRQ, vidage FIFO, trame complète
@@ -327,7 +327,7 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid) {
 
     // Lancement de la transmission RF
     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_TRANSCEIVE);
-    rfid_rc522_SetBitMask(dev, RC522_REG_BIT_FRAMING, 0x80); // Start Send
+    rfid_rc522_set_bit_mask(dev, RC522_REG_BIT_FRAMING, 0x80); // Start Send
 
     // Attente de fin de commande (timeout 25 ms)
     uint32_t timeout = systick_get_tick() + 25;
@@ -340,7 +340,7 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid) {
             uint8_t err = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
             if (err & 0x1D) {
                 LOG_DEBUG_HEX("Anticoll error: ", err);
-                rfid_rc522_AntennaOff(dev);
+                rfid_rc522_antenna_off(dev);
                 delay_ms(5);
                 rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
                 return RC522_STATUS_ERROR;
@@ -359,17 +359,17 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid) {
                 if (uid[4] != calcBcc) {
                     LOG_DEBUG_HEX("Anticoll bad BCC calc: ", calcBcc);
                     LOG_DEBUG_HEX("Anticoll bad BCC got: ", uid[4]);
-                    rfid_rc522_AntennaOff(dev);
+                    rfid_rc522_antenna_off(dev);
                     delay_ms(5);
                     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
                     return RC522_STATUS_ERROR;
                 }
 
-                LOG_DEBUG_HEX("Anticoll UID[0]: ", uid[0]);
-                LOG_DEBUG_HEX("Anticoll UID[1]: ", uid[1]);
-                LOG_DEBUG_HEX("Anticoll UID[2]: ", uid[2]);
-                LOG_DEBUG_HEX("Anticoll UID[3]: ", uid[3]);
-                LOG_DEBUG_HEX("Anticoll BCC: ", uid[4]);
+               // LOG_DEBUG_HEX("Anticoll UID[0]: ", uid[0]);
+               //LOG_DEBUG_HEX("Anticoll UID[1]: ", uid[1]);
+               // LOG_DEBUG_HEX("Anticoll UID[2]: ", uid[2]);
+               // LOG_DEBUG_HEX("Anticoll UID[3]: ", uid[3]);
+               // LOG_DEBUG_HEX("Anticoll BCC: ", uid[4]);
                 rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
                 delay_ms(2);
                 return RC522_STATUS_OK;
@@ -378,7 +378,7 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid) {
             // FIFO inattendu : réinitialisation et rallumage antenne
             LOG_DEBUG_HEX("Anticoll bad FIFO level: ", fifoLvl);
             rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
-            rfid_rc522_AntennaOn(dev);
+            rfid_rc522_antenna_on(dev);
             return RC522_STATUS_ERROR;
         }
 
@@ -387,7 +387,7 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid) {
 
     // Timeout dépassé sans réponse de la carte
     LOG_DEBUG("Anticoll timeout");
-    rfid_rc522_AntennaOff(dev);
+    rfid_rc522_antenna_off(dev);
     delay_ms(5);
     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
     return RC522_STATUS_TIMEOUT; 
@@ -399,11 +399,11 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid) {
  * @param  uid  Buffer de sortie (4 octets) recevant l'UID de la carte.
  * @return STATUS_OK en cas de succès, STATUS_ERROR sinon.
  */
-uint8_t rfid_rc522_ReadUid(MFRC522_t *dev, uint8_t *uid) {
+uint8_t rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid) {
     LOG_DEBUG("Reading UID...");
 
     uint8_t rawUid[5]; // 4 octets UID + 1 octet BCC
-    if (rfid_rc522_Anticoll(dev, rawUid) != RC522_STATUS_OK) {
+    if (rfid_rc522_anticoll_raw(dev, rawUid) != RC522_STATUS_OK) {
         LOG_DEBUG("Anticollision failed");
         return RC522_STATUS_ERROR;
     }
