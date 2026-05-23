@@ -138,7 +138,9 @@ typedef enum {
     RC522_STATUS_OK = 0,
     RC522_STATUS_ERROR = 1,
     RC522_STATUS_TIMEOUT = 2,
-    RC522_STATUS_INVALID = 3
+    RC522_STATUS_INVALID = 3,
+    RC522_STATUS_BCC_MISMATCH,
+    RC522_STATUS_INVALID_UID
 } RC522_Status;
 
 /* ============================================================================

@@ -366,7 +366,7 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
                     LOG_DEBUG_HEX("Anticoll bad BCC calc: ", calcBcc);
                     LOG_DEBUG_HEX("Anticoll bad BCC got: ", uid[4]);
                     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
-                    return RC522_STATUS_ERROR;
+                    return RC522_STATUS_BCC_MISMATCH;
                 }
 
                // LOG_DEBUG_HEX("Anticoll UID[0]: ", uid[0]);
@@ -383,9 +383,8 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
             LOG_DEBUG_HEX("Anticoll bad FIFO level: ", fifoLvl);
             rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
             rfid_rc522_antenna_on(dev);
-            return RC522_STATUS_ERROR;
+            return RC522_STATUS_INVALID_UID;
         }
-
         delay_ms(1);
     }
 
@@ -405,9 +404,30 @@ RC522_Status rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid) {
     LOG_DEBUG("Reading UID...");
 
     uint8_t rawUid[5]; // 4 octets UID + 1 octet BCC
-    if (rfid_rc522_anticoll_raw(dev, rawUid) != RC522_STATUS_OK) {
-        LOG_DEBUG("Anticollision failed");
-        return RC522_STATUS_ERROR;
+    RC522_Status status = rfid_rc522_anticoll_raw(dev, rawUid);
+    if (status != RC522_STATUS_OK) {
+        switch (status) {
+        case RC522_STATUS_TIMEOUT:
+            LOG_DEBUG("Anticollision timeout");
+            break;
+
+        case RC522_STATUS_BCC_MISMATCH:
+            LOG_DEBUG("Anticollision BCC mismatch");
+            break;
+
+        case RC522_STATUS_INVALID_UID:
+            LOG_DEBUG("Anticollision invalid UID frame");
+            break;
+
+        case RC522_STATUS_ERROR:
+            LOG_DEBUG("Anticollision RF/error status");
+            break;
+
+        default:
+            LOG_DEBUG("Anticollision failed");
+            break;
+        }
+        return status;
     }
 
     for (int i = 0; i < 4; i++)
