@@ -175,13 +175,13 @@ RC522_Status rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa) {
     rfid_rc522_write_reg(dev, RC522_REG_COMMAND,     RC522_PCD_TRANSCEIVE);
     rfid_rc522_write_reg(dev, RC522_REG_BIT_FRAMING, 0x87); /* bit StartSend = 1 */
 
-    /* Attente réponse carte : RxIRq (données reçues) ou TimerIRq (timeout), 25 ms max */
+    /* Attente réponse carte : RxIRq (données reçues) ou LoAlertIrq, 25 ms max */
     uint32_t timeout = systick_get_tick() + 25;
     uint8_t irq = 0;
     while (systick_get_tick() < timeout) {
         irq = rfid_rc522_read_reg(dev, RC522_REG_COMM_IRQ);
-        if (irq & 0x20) break;  /* RxIRq  : données reçues */
-        if (irq & 0x04) break;  /* TimerIRq : pas de réponse */
+        if (irq & RC522_IRQ_RX) break;       /* RxIRq  : données reçues */
+        if (irq & RC522_IRQ_LOALERT) break;  /* LoAlertIrq : FIFO vide */
         delay_ms(1);
     }
 
@@ -200,7 +200,7 @@ RC522_Status rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa) {
     }
 
     /* Données reçues et FIFO contient bien les 2 octets attendus */
-    if ((irq & 0x20) && fifoLvl >= 2) {
+    if ((irq & RC522_IRQ_RX) && fifoLvl >= 2) {
         atqa[0] = rfid_rc522_read_reg(dev, RC522_REG_FIFO_DATA);
         atqa[1] = rfid_rc522_read_reg(dev, RC522_REG_FIFO_DATA);
 
