@@ -158,7 +158,7 @@ typedef enum {
 #define RC522_FIFO_SIZE            64
 
 /**@brief Nbr tentatives pour détecter une carte MIFAIRE */
-#define MAX_TIMEOUT_COUNT 10
+#define MAX_TIMEOUT_COUNT 100
 
 /**
  * @brief Structure représentant l'UID d'une carte.

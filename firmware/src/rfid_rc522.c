@@ -282,6 +282,7 @@ void rfid_rc522_antenna_on(MFRC522_t *dev) {
 RC522_Status rfid_rc522_poll_card(MFRC522_t *dev)
 {
     uint8_t atqa[2];
+    rfid_rc522_antenna_on(dev);
     rfid_rc522_write_reg(dev,    RC522_REG_COMMAND,      RC522_PCD_IDLE);
     rfid_rc522_write_reg(dev,    RC522_REG_COMM_IRQ,     0x7F);
     rfid_rc522_write_reg(dev,    RC522_REG_FIFO_LEVEL,   0x80);
@@ -347,8 +348,6 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
             uint8_t err = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
             if (err & 0x1D) {
                 LOG_DEBUG_HEX("Anticoll error: ", err);
-                rfid_rc522_antenna_off(dev);
-                delay_ms(5);
                 rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
                 return RC522_STATUS_ERROR;
             }
@@ -366,8 +365,6 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
                 if (uid[4] != calcBcc) {
                     LOG_DEBUG_HEX("Anticoll bad BCC calc: ", calcBcc);
                     LOG_DEBUG_HEX("Anticoll bad BCC got: ", uid[4]);
-                    rfid_rc522_antenna_off(dev);
-                    delay_ms(5);
                     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
                     return RC522_STATUS_ERROR;
                 }
@@ -394,8 +391,6 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
 
     // Timeout dépassé sans réponse de la carte
     LOG_DEBUG("Anticoll timeout");
-    rfid_rc522_antenna_off(dev);
-    delay_ms(5);
     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
     return RC522_STATUS_TIMEOUT; 
 }
