@@ -94,6 +94,19 @@ a * @file rfid_rc522.h
 #define RC522_PCD_AUTHENT          0x0E  /* Authentification MIFARE */
 #define RC522_PCD_RESET            0x0F  // Commande pour effectuer une réinitialisation logicielle du RC522
 
+/* Bits du registre CommIrqReg */
+#define RC522_IRQ_TX               0x40
+#define RC522_IRQ_RX               0x20
+#define RC522_IRQ_IDLE             0x10
+#define RC522_IRQ_HIALERT          0x08
+#define RC522_IRQ_LOALERT          0x04
+#define RC522_IRQ_ERR              0x02
+#define RC522_IRQ_TIMER            0x01
+#define RC522_IRQ_CLEAR            0x7F
+
+#define RC522_IRQ_TRANSCEIVE_DONE  (RC522_IRQ_RX | RC522_IRQ_IDLE)
+#define RC522_IRQ_TRANSCEIVE_FAIL  (RC522_IRQ_TIMER | RC522_IRQ_ERR)
+
 /* ============================================================================
  * COMMANDES PICC (ISO/IEC 14443-3 Type A)
  * ============================================================================ */

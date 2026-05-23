@@ -329,12 +329,19 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_TRANSCEIVE);
     rfid_rc522_set_bit_mask(dev, RC522_REG_BIT_FRAMING, 0x80); // Start Send
 
-    // Attente de fin de commande (timeout 25 ms)
+    // Attente de fin de commande via CommIrqReg (RxIRq/IdleIRq) ou erreur/timeout
     uint32_t timeout = systick_get_tick() + 25;
     while (systick_get_tick() < timeout) {
 
-        uint8_t status2 = rfid_rc522_read_reg(dev, RC522_REG_STATUS_2);
-        if (status2 & 0x01) { // Commande terminée
+        uint8_t irq = rfid_rc522_read_reg(dev, RC522_REG_COMM_IRQ);
+
+        if (irq & RC522_IRQ_TRANSCEIVE_FAIL) {
+            LOG_DEBUG_HEX("Anticoll IRQ error/timeout: ", irq);
+            rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+            return (irq & RC522_IRQ_TIMER) ? RC522_STATUS_TIMEOUT : RC522_STATUS_ERROR;
+        }
+
+        if (irq & RC522_IRQ_TRANSCEIVE_DONE) { // Réponse reçue ou commande terminée
 
             // Vérification des erreurs (collision, parité, protocole…)
             uint8_t err = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
