@@ -114,25 +114,9 @@ static RC522_Status state_streaming(void)
             LOG_DEBUG_HEX("SAK: ", full_uid.sak);
             LOG_DEBUG_INT("UID size: ", full_uid.size);
 
-            if ((full_uid.size == RC522_UID_SINGLE_SIZE) &&
-                (full_uid.uid[0] == 0xAB) && (full_uid.uid[1] == 0x82) &&
-                (full_uid.uid[2] == 0xBB) && (full_uid.uid[3] == 0x1C))
-            {
-                LOG_DEBUG(" MIFARE Classic 1K card detected ");
-                delay_ms(5000);
-            }
-            else if ((full_uid.size == RC522_UID_SINGLE_SIZE) &&
-                     (full_uid.uid[0] == 0x5A) && (full_uid.uid[1] == 0xDA) &&
-                     (full_uid.uid[2] == 0x32) && (full_uid.uid[3] == 0x16))
-            {
-                LOG_DEBUG(" MIFARE Classic 4K card detected ");
-                delay_ms(5000);
-            }
-            else
-            { 
-                LOG_DEBUG("UNKNOWN CARD");
-                delay_ms(5000);
-            } 
+            RC522_CardType card_type = rfid_rc522_get_card_type(&full_uid);
+            LOG_DEBUG(rfid_rc522_card_type_name(card_type));
+            delay_ms(5000);
             return RC522_STATUS_OK;
     }
     else 

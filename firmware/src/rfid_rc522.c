@@ -329,10 +329,10 @@ static RC522_Status __attribute__((unused)) rfid_rc522_calc_crc_a(MFRC522_t *dev
  * @param  sak        Buffer de sortie SAK.
  * @return STATUS_OK en cas de succès, sinon code d'erreur.
  */
-static RC522_Status __attribute__((unused)) rfid_rc522_select_level(MFRC522_t *dev,
-                                                                    uint8_t sel_cmd,
-                                                                    const uint8_t uid_frame[PICC_UID_FRAME_SIZE],
-                                                                    uint8_t *sak)
+static RC522_Status rfid_rc522_select_level(MFRC522_t *dev,
+                                            uint8_t sel_cmd,
+                                            const uint8_t uid_frame[PICC_UID_FRAME_SIZE],
+                                            uint8_t *sak)
 {
     if (dev == NULL || uid_frame == NULL || sak == NULL) {
         return RC522_STATUS_INVALID;
@@ -474,12 +474,14 @@ void rfid_rc522_recover(MFRC522_t *dev)
 
 
 /**
- * @brief  Exécute l'anticollision ISO 14443 : envoie SEL+CL1 et récupère l'UID (4 octets) + BCC.
+ * @brief  Exécute l'anticollision pour un niveau cascade donné.
  * @param  dev  Pointeur vers le périphérique MFRC522.
- * @param  uid  Buffer de sortie (5 octets) : uid[0..3] = UID, uid[4] = BCC.
+ * @param  cmd  Commande anticollision CL1/CL2/CL3.
+ * @param  uid  Buffer de sortie: UID partiel + BCC.
  * @return STATUS_OK en cas de succès, STATUS_ERROR si erreur RF, BCC invalide ou timeout.
  */
-RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
+static RC522_Status rfid_rc522_anticoll_level(MFRC522_t *dev, uint8_t cmd, uint8_t *uid)
+{
     if (dev == NULL || uid == NULL) {
         return RC522_STATUS_INVALID;
     }
@@ -491,9 +493,9 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
     rfid_rc522_write_reg(dev, RC522_REG_FIFO_LEVEL, 0x80);
     rfid_rc522_write_reg(dev, RC522_REG_BIT_FRAMING, 0x00);
 
-    // Commande anticollision : SEL CL1 (0x93) + NVB 0x20 (2 octets, pas de CRC)
-    rfid_rc522_write_reg(dev, RC522_REG_FIFO_DATA, PICC_CMD_ANTICOLL_1);
-    rfid_rc522_write_reg(dev, RC522_REG_FIFO_DATA, 0x20);
+    // Commande anticollision : SEL CLx + NVB 0x20 (2 octets, pas de CRC)
+    rfid_rc522_write_reg(dev, RC522_REG_FIFO_DATA, cmd);
+    rfid_rc522_write_reg(dev, RC522_REG_FIFO_DATA, PICC_NVB_ANTICOLL);
     delay_ms(2);
 
     // Lancement de la transmission RF
@@ -522,19 +524,23 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
                 return RC522_STATUS_ERROR;
             }
 
-            // Vérification que le FIFO contient bien 5 octets (UID + BCC)
+            // Vérification que le FIFO contient bien UID partiel + BCC
             uint8_t fifoLvl = rfid_rc522_read_reg(dev, RC522_REG_FIFO_LEVEL);
-            if (fifoLvl == 5) {
+            if (fifoLvl == PICC_UID_FRAME_SIZE) {
 
-                // Lecture des 5 octets depuis le FIFO
-                for (int i = 0; i < 5; i++)
+                // Lecture des octets depuis le FIFO
+                for (uint8_t i = 0; i < PICC_UID_FRAME_SIZE; i++)
                     uid[i] = rfid_rc522_read_reg(dev, RC522_REG_FIFO_DATA);
 
-                // Validation du BCC : BCC = UID[0] ^ UID[1] ^ UID[2] ^ UID[3]
-                uint8_t calcBcc = uid[0] ^ uid[1] ^ uid[2] ^ uid[3];
-                if (uid[4] != calcBcc) {
+                // Validation du BCC : XOR des 4 octets UID du niveau courant
+                uint8_t calcBcc = 0;
+                for (uint8_t i = 0; i < PICC_UID_PART_SIZE; i++) {
+                    calcBcc ^= uid[i];
+                }
+
+                if (uid[PICC_UID_PART_SIZE] != calcBcc) {
                     LOG_DEBUG_HEX("Anticoll bad BCC calc: ", calcBcc);
-                    LOG_DEBUG_HEX("Anticoll bad BCC got: ", uid[4]);
+                    LOG_DEBUG_HEX("Anticoll bad BCC got: ", uid[PICC_UID_PART_SIZE]);
                     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
                     return RC522_STATUS_BCC_MISMATCH;
                 }
@@ -565,7 +571,18 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
 }
 
 /**
- * @brief  Lit UID 4 octets et SAK en réutilisant l'ATQA du polling.
+ * @brief  Exécute l'anticollision CL1 et récupère UID + BCC.
+ * @param  dev  Pointeur vers le périphérique MFRC522.
+ * @param  uid  Buffer de sortie (5 octets) : UID[0..3] + BCC.
+ * @return STATUS_OK en cas de succès, sinon code d'erreur.
+ */
+RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid)
+{
+    return rfid_rc522_anticoll_level(dev, PICC_CMD_CL1, uid);
+}
+
+/**
+ * @brief  Lit UID 4/7 octets et SAK en réutilisant l'ATQA du polling.
  * @param  dev  Pointeur vers le périphérique MFRC522.
  * @param  uid  Structure de sortie UID complète.
  * @param  atqa ATQA obtenu pendant le polling.
@@ -599,8 +616,69 @@ RC522_Status rfid_rc522_read_uid_full(MFRC522_t *dev, RC522_UID *uid, const uint
     LOG_DEBUG_HEX("UID SAK: ", uid->sak);
 
     if ((rawUid[0] == PICC_CASCADE_TAG) || (uid->sak & PICC_SAK_CASCADE)) {
-        LOG_DEBUG("UID cascade not supported yet");
-        return RC522_STATUS_INVALID_UID;
+        if (rawUid[0] != PICC_CASCADE_TAG) {
+            return RC522_STATUS_INVALID_UID;
+        }
+
+        LOG_DEBUG("UID cascade CL2");
+        uid->uid[0] = rawUid[1];
+        uid->uid[1] = rawUid[2];
+        uid->uid[2] = rawUid[3];
+
+        uint8_t rawUidCl2[PICC_UID_FRAME_SIZE];
+        status = rfid_rc522_anticoll_level(dev, PICC_CMD_CL2, rawUidCl2);
+        if (status != RC522_STATUS_OK) {
+            return status;
+        }
+
+        status = rfid_rc522_select_level(dev, PICC_CMD_SELECT_CL2, rawUidCl2, &uid->sak);
+        if (status != RC522_STATUS_OK) {
+            return status;
+        }
+
+        LOG_DEBUG_HEX("UID SAK CL2: ", uid->sak);
+
+        if (uid->sak & PICC_SAK_CASCADE) {
+            if (rawUidCl2[0] != PICC_CASCADE_TAG) {
+                return RC522_STATUS_INVALID_UID;
+            }
+
+            LOG_DEBUG("UID cascade CL3");
+            uid->uid[3] = rawUidCl2[1];
+            uid->uid[4] = rawUidCl2[2];
+            uid->uid[5] = rawUidCl2[3];
+
+            uint8_t rawUidCl3[PICC_UID_FRAME_SIZE];
+            status = rfid_rc522_anticoll_level(dev, PICC_CMD_CL3, rawUidCl3);
+            if (status != RC522_STATUS_OK) {
+                return status;
+            }
+
+            status = rfid_rc522_select_level(dev, PICC_CMD_SELECT_CL3, rawUidCl3, &uid->sak);
+            if (status != RC522_STATUS_OK) {
+                return status;
+            }
+
+            LOG_DEBUG_HEX("UID SAK CL3: ", uid->sak);
+
+            if (uid->sak & PICC_SAK_CASCADE) {
+                return RC522_STATUS_INVALID_UID;
+            }
+
+            for (uint8_t i = 0; i < PICC_UID_PART_SIZE; i++) {
+                uid->uid[i + 6] = rawUidCl3[i];
+            }
+            uid->size = RC522_UID_TRIPLE_SIZE;
+            LOG_DEBUG_INT("UID size: ", uid->size);
+            return RC522_STATUS_OK;
+        }
+
+        for (uint8_t i = 0; i < PICC_UID_PART_SIZE; i++) {
+            uid->uid[i + 3] = rawUidCl2[i];
+        }
+        uid->size = RC522_UID_DOUBLE_SIZE;
+        LOG_DEBUG_INT("UID size: ", uid->size);
+        return RC522_STATUS_OK;
     }
 
     for (uint8_t i = 0; i < RC522_UID_SINGLE_SIZE; i++) {
@@ -659,4 +737,58 @@ RC522_Status rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid) {
     LOG_DEBUG_HEX("Card UID[2]: ", uid[2]);
     LOG_DEBUG_HEX("Card UID[3]: ", uid[3]);
     return RC522_STATUS_OK;
+}
+
+RC522_CardType rfid_rc522_get_card_type(const RC522_UID *uid)
+{
+    if (uid == NULL) {
+        return RC522_CARD_TYPE_UNKNOWN;
+    }
+
+    uint8_t sak = uid->sak & 0x7F;
+    switch (sak) {
+    case 0x04:
+        return RC522_CARD_TYPE_NOT_COMPLETE;
+    case 0x09:
+        return RC522_CARD_TYPE_MIFARE_MINI;
+    case 0x08:
+        return RC522_CARD_TYPE_MIFARE_CLASSIC_1K;
+    case 0x18:
+        return RC522_CARD_TYPE_MIFARE_CLASSIC_4K;
+    case 0x00:
+        return RC522_CARD_TYPE_MIFARE_ULTRALIGHT;
+    case 0x10:
+    case 0x11:
+        return RC522_CARD_TYPE_MIFARE_PLUS;
+    case 0x20:
+        return RC522_CARD_TYPE_ISO_14443_4;
+    case 0x40:
+        return RC522_CARD_TYPE_ISO_18092;
+    default:
+        return RC522_CARD_TYPE_UNKNOWN;
+    }
+}
+
+const char *rfid_rc522_card_type_name(RC522_CardType type)
+{
+    switch (type) {
+    case RC522_CARD_TYPE_MIFARE_MINI:
+        return "MIFARE Mini";
+    case RC522_CARD_TYPE_MIFARE_CLASSIC_1K:
+        return "MIFARE Classic 1K";
+    case RC522_CARD_TYPE_MIFARE_CLASSIC_4K:
+        return "MIFARE Classic 4K";
+    case RC522_CARD_TYPE_MIFARE_ULTRALIGHT:
+        return "MIFARE Ultralight/NTAG";
+    case RC522_CARD_TYPE_MIFARE_PLUS:
+        return "MIFARE Plus";
+    case RC522_CARD_TYPE_ISO_14443_4:
+        return "ISO 14443-4";
+    case RC522_CARD_TYPE_ISO_18092:
+        return "ISO 18092";
+    case RC522_CARD_TYPE_NOT_COMPLETE:
+        return "UID not complete";
+    default:
+        return "Unknown card";
+    }
 }

@@ -162,6 +162,18 @@ typedef enum {
     RC522_STATUS_INVALID_UID
 } RC522_Status;
 
+typedef enum {
+    RC522_CARD_TYPE_UNKNOWN = 0,
+    RC522_CARD_TYPE_MIFARE_MINI,
+    RC522_CARD_TYPE_MIFARE_CLASSIC_1K,
+    RC522_CARD_TYPE_MIFARE_CLASSIC_4K,
+    RC522_CARD_TYPE_MIFARE_ULTRALIGHT,
+    RC522_CARD_TYPE_MIFARE_PLUS,
+    RC522_CARD_TYPE_ISO_14443_4,
+    RC522_CARD_TYPE_ISO_18092,
+    RC522_CARD_TYPE_NOT_COMPLETE
+} RC522_CardType;
+
 /* ============================================================================
  * STRUCTURES DE DONNÉES
  * ============================================================================ */
@@ -280,7 +292,7 @@ void rfid_rc522_recover(MFRC522_t *dev);
 RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid);
 
 /**
- * @brief Lit l'UID complet d'une carte RFID (CL1 uniquement pour l'instant).
+ * @brief Lit l'UID complet d'une carte RFID (CL1/CL2/CL3).
  * @param[in] dev Pointeur vers la structure MFRC522.
  * @param[out] uid Structure recevant ATQA, UID, taille et SAK.
  * @param[in] atqa ATQA obtenu pendant le polling.
@@ -295,6 +307,20 @@ RC522_Status rfid_rc522_read_uid_full(MFRC522_t *dev, RC522_UID *uid, const uint
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
 RC522_Status rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid);
+
+/**
+ * @brief Déduit le type de carte depuis SAK/ATQA.
+ * @param[in] uid Structure UID complète.
+ * @return Type de carte détecté.
+ */
+RC522_CardType rfid_rc522_get_card_type(const RC522_UID *uid);
+
+/**
+ * @brief Convertit un type de carte en texte lisible.
+ * @param[in] type Type de carte.
+ * @return Nom du type de carte.
+ */
+const char *rfid_rc522_card_type_name(RC522_CardType type);
 
 /**
  * @brief Attend le retrait de la carte RFID.
