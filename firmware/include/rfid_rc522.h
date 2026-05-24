@@ -252,10 +252,10 @@ void rfid_rc522_clear_bit_mask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
  *
  * @param[in] dev  Pointeur vers la structure MFRC522 (périphérique cible).
  *
- * @return STATUS_OK      Une carte a répondu à la requête REQA.
- * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
+ * @param[out] atqa Buffer de 2 octets recevant l'ATQA.
+ * @return STATUS_OK si une carte répond, sinon code d'erreur.
  */
-RC522_Status rfid_rc522_poll_card(MFRC522_t *dev);
+RC522_Status rfid_rc522_poll_card(MFRC522_t *dev, uint8_t *atqa);
 
 /**
  * @brief Envoie une commande REQA et récupère l'ATQA de la carte.
@@ -278,6 +278,15 @@ void rfid_rc522_recover(MFRC522_t *dev);
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
 RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid);
+
+/**
+ * @brief Lit l'UID complet d'une carte RFID (CL1 uniquement pour l'instant).
+ * @param[in] dev Pointeur vers la structure MFRC522.
+ * @param[out] uid Structure recevant ATQA, UID, taille et SAK.
+ * @param[in] atqa ATQA obtenu pendant le polling.
+ * @return RC522_STATUS_OK si succès, sinon code d'erreur.
+ */
+RC522_Status rfid_rc522_read_uid_full(MFRC522_t *dev, RC522_UID *uid, const uint8_t *atqa);
 
 /**
  * @brief Lit l'UID 4 octets d'une carte RFID.

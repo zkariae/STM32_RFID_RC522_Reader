@@ -438,13 +438,12 @@ void rfid_rc522_antenna_on(MFRC522_t *dev) {
  * @return STATUS_OK      Une carte a répondu à la requête REQA.
  * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
  */
-RC522_Status rfid_rc522_poll_card(MFRC522_t *dev)
+RC522_Status rfid_rc522_poll_card(MFRC522_t *dev, uint8_t *atqa)
 {
-    if (dev == NULL) {
+    if (dev == NULL || atqa == NULL) {
         return RC522_STATUS_INVALID;
     }
 
-    uint8_t atqa[2];
     rfid_rc522_antenna_on(dev);
     rfid_rc522_write_reg(dev,    RC522_REG_COMMAND,      RC522_PCD_IDLE);
     rfid_rc522_write_reg(dev,    RC522_REG_COMM_IRQ,     0x7F);
@@ -563,6 +562,53 @@ RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid) {
     LOG_DEBUG("Anticoll timeout");
     rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
     return RC522_STATUS_TIMEOUT; 
+}
+
+/**
+ * @brief  Lit UID 4 octets et SAK en réutilisant l'ATQA du polling.
+ * @param  dev  Pointeur vers le périphérique MFRC522.
+ * @param  uid  Structure de sortie UID complète.
+ * @param  atqa ATQA obtenu pendant le polling.
+ * @return STATUS_OK en cas de succès, sinon code d'erreur.
+ */
+RC522_Status rfid_rc522_read_uid_full(MFRC522_t *dev, RC522_UID *uid, const uint8_t *atqa)
+{
+    if (dev == NULL || uid == NULL || atqa == NULL) {
+        return RC522_STATUS_INVALID;
+    }
+
+    for (uint8_t i = 0; i < RC522_UID_MAX_SIZE; i++) {
+        uid->uid[i] = 0;
+    }
+    uid->size = 0;
+    uid->sak = 0;
+    uid->atqa[0] = atqa[0];
+    uid->atqa[1] = atqa[1];
+
+    uint8_t rawUid[PICC_UID_FRAME_SIZE];
+    RC522_Status status = rfid_rc522_anticoll_raw(dev, rawUid);
+    if (status != RC522_STATUS_OK) {
+        return status;
+    }
+
+    status = rfid_rc522_select_level(dev, PICC_CMD_SELECT_CL1, rawUid, &uid->sak);
+    if (status != RC522_STATUS_OK) {
+        return status;
+    }
+
+    LOG_DEBUG_HEX("UID SAK: ", uid->sak);
+
+    if ((rawUid[0] == PICC_CASCADE_TAG) || (uid->sak & PICC_SAK_CASCADE)) {
+        LOG_DEBUG("UID cascade not supported yet");
+        return RC522_STATUS_INVALID_UID;
+    }
+
+    for (uint8_t i = 0; i < RC522_UID_SINGLE_SIZE; i++) {
+        uid->uid[i] = rawUid[i];
+    }
+    uid->size = RC522_UID_SINGLE_SIZE;
+
+    return RC522_STATUS_OK;
 }
 
 /**

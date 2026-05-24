@@ -33,6 +33,7 @@ typedef enum {
  * ============================================================================ */
 
 static State current_state = STATE_INIT;
+static uint8_t current_atqa[2];
 
 /* ============================================================================
  * STRUCTURES
@@ -76,7 +77,7 @@ static InitResult state_init(void)
 static RC522_Status state_idle(void)
 {
    static uint8_t timeoutCount = 0;
-   if (rfid_rc522_poll_card(&rfID) == RC522_STATUS_OK)
+   if (rfid_rc522_poll_card(&rfID, current_atqa) == RC522_STATUS_OK)
    {
        timeoutCount = 0; // Reset compteur si carte détectée
        LOG_DEBUG("Card detected");
@@ -104,16 +105,25 @@ static RC522_Status state_idle(void)
  */
 static RC522_Status state_streaming(void)
 {
-    uint8_t uid[4];
+    RC522_UID full_uid;
 
-    if(rfid_rc522_read_uid(&rfID, uid) == RC522_STATUS_OK)
+    if(rfid_rc522_read_uid_full(&rfID, &full_uid, current_atqa) == RC522_STATUS_OK)
     {
-            if ((uid[0] == 0xAB) && (uid[1] == 0x82) && (uid[2] == 0xBB) && (uid[3] == 0x1C))
+            LOG_DEBUG_HEX("ATQA[0]: ", full_uid.atqa[0]);
+            LOG_DEBUG_HEX("ATQA[1]: ", full_uid.atqa[1]);
+            LOG_DEBUG_HEX("SAK: ", full_uid.sak);
+            LOG_DEBUG_INT("UID size: ", full_uid.size);
+
+            if ((full_uid.size == RC522_UID_SINGLE_SIZE) &&
+                (full_uid.uid[0] == 0xAB) && (full_uid.uid[1] == 0x82) &&
+                (full_uid.uid[2] == 0xBB) && (full_uid.uid[3] == 0x1C))
             {
                 LOG_DEBUG(" MIFARE Classic 1K card detected ");
                 delay_ms(5000);
             }
-            else if ((uid[0] == 0x5A) && (uid[1] == 0xDA) && (uid[2] == 0x32) && (uid[3] == 0x16))
+            else if ((full_uid.size == RC522_UID_SINGLE_SIZE) &&
+                     (full_uid.uid[0] == 0x5A) && (full_uid.uid[1] == 0xDA) &&
+                     (full_uid.uid[2] == 0x32) && (full_uid.uid[3] == 0x16))
             {
                 LOG_DEBUG(" MIFARE Classic 4K card detected ");
                 delay_ms(5000);
