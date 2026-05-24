@@ -322,6 +322,86 @@ static RC522_Status __attribute__((unused)) rfid_rc522_calc_crc_a(MFRC522_t *dev
 }
 
 /**
+ * @brief  Sélectionne un niveau cascade et lit le SAK.
+ * @param  dev        Pointeur vers le périphérique MFRC522.
+ * @param  sel_cmd    Commande SELECT CL1/CL2/CL3.
+ * @param  uid_frame  UID partiel + BCC (5 octets).
+ * @param  sak        Buffer de sortie SAK.
+ * @return STATUS_OK en cas de succès, sinon code d'erreur.
+ */
+static RC522_Status __attribute__((unused)) rfid_rc522_select_level(MFRC522_t *dev,
+                                                                    uint8_t sel_cmd,
+                                                                    const uint8_t uid_frame[PICC_UID_FRAME_SIZE],
+                                                                    uint8_t *sak)
+{
+    if (dev == NULL || uid_frame == NULL || sak == NULL) {
+        return RC522_STATUS_INVALID;
+    }
+
+    uint8_t frame[9];
+    uint8_t crc[2];
+
+    frame[0] = sel_cmd;
+    frame[1] = PICC_NVB_SELECT;
+    for (uint8_t i = 0; i < PICC_UID_FRAME_SIZE; i++) {
+        frame[i + 2] = uid_frame[i];
+    }
+
+    RC522_Status status = rfid_rc522_calc_crc_a(dev, frame, 7, crc);
+    if (status != RC522_STATUS_OK) {
+        return status;
+    }
+
+    frame[7] = crc[0];
+    frame[8] = crc[1];
+
+    rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+    rfid_rc522_write_reg(dev, RC522_REG_COMM_IRQ, RC522_IRQ_CLEAR);
+    rfid_rc522_write_reg(dev, RC522_REG_FIFO_LEVEL, RC522_FIFO_FLUSH);
+    rfid_rc522_write_reg(dev, RC522_REG_BIT_FRAMING, 0x00);
+
+    for (uint8_t i = 0; i < sizeof(frame); i++) {
+        rfid_rc522_write_reg(dev, RC522_REG_FIFO_DATA, frame[i]);
+    }
+
+    rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_TRANSCEIVE);
+    rfid_rc522_set_bit_mask(dev, RC522_REG_BIT_FRAMING, 0x80);
+
+    uint32_t start = systick_get_tick();
+    while ((systick_get_tick() - start) < 25) {
+        uint8_t irq = rfid_rc522_read_reg(dev, RC522_REG_COMM_IRQ);
+
+        if (irq & RC522_IRQ_TRANSCEIVE_FAIL) {
+            rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+            return (irq & RC522_IRQ_TIMER) ? RC522_STATUS_TIMEOUT : RC522_STATUS_ERROR;
+        }
+
+        if (irq & RC522_IRQ_TRANSCEIVE_DONE) {
+            uint8_t err = rfid_rc522_read_reg(dev, RC522_REG_ERROR);
+            if (err & 0x1D) {
+                rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+                return RC522_STATUS_ERROR;
+            }
+
+            uint8_t fifoLvl = rfid_rc522_read_reg(dev, RC522_REG_FIFO_LEVEL);
+            if (fifoLvl < 1) {
+                rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+                return RC522_STATUS_INVALID_UID;
+            }
+
+            *sak = rfid_rc522_read_reg(dev, RC522_REG_FIFO_DATA);
+            rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+            return RC522_STATUS_OK;
+        }
+
+        delay_ms(1);
+    }
+
+    rfid_rc522_write_reg(dev, RC522_REG_COMMAND, RC522_PCD_IDLE);
+    return RC522_STATUS_TIMEOUT;
+}
+
+/**
  * @brief  Éteint l'antenne RF en désactivant les pilotes Tx1 et Tx2.
  * @param  dev  Pointeur vers le périphérique MFRC522.
  */
