@@ -1,5 +1,12 @@
 # STM32 RFID RC522 Driver Documentation
 
+![Language](https://img.shields.io/badge/language-C-blue)
+![Toolchain](https://img.shields.io/badge/toolchain-arm--none--eabi--gcc-orange)
+![Platform](https://img.shields.io/badge/platform-STM32F407VG--Discovery-green)
+![MCU](https://img.shields.io/badge/MCU-STM32F407%20%7C%20Cortex--M4-green)
+![Build](https://img.shields.io/badge/build-Make-informational)
+![Framework](https://img.shields.io/badge/framework-libopencm3-lightgrey)
+
 Firmware project for an STM32F407 board using an MFRC522 / RC522 RFID reader over SPI. The current focus of the project is the `rfid_rc522` driver: card polling, ISO/IEC 14443-A request and anticollision, UID extraction, SAK-based card type detection, and UART runtime logging.
 
 ## Features
