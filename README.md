@@ -432,69 +432,36 @@ Reads the full UID using `rfid_rc522_read_uid_full()`, logs card metadata, waits
 
 ## Global RC522 Driver Schema
 
-The diagram below shows how the application state machine calls the RC522 driver and how the driver moves from SPI register access to RF card communication.
+The diagrams below are intentionally small to keep GitHub rendering reliable on desktop and mobile. Detailed function calls are listed in the text sequence that follows.
+
+### Application State Flow
 
 ```mermaid
 flowchart TD
-    A[main.c] --> B[System initialization]
-    B --> B1[systick_init]
-    B --> B2[gpio_driver_init]
-    B --> B3[uart_init]
-    B --> B4[spi_driver_init]
-    B --> C[Application state machine]
+    INIT --> VERIFY
+    VERIFY --> IDLE
+    IDLE -->|Card detected| STREAMING
+    IDLE -->|Repeated timeout| RECOVER
+    RECOVER --> IDLE
+    STREAMING -->|Card removed| IDLE
+    STREAMING -->|Error| INIT
+```
 
-    C --> D[STATE_INIT]
-    D --> E[rfid_rc522_init]
-    E --> F{RC522_STATUS_OK?}
-    F -- No --> D
-    F -- Yes --> G[STATE_VERIFY]
-    G --> H[STATE_IDLE]
+### RFID Detection Flow
 
-    H --> I[rfid_rc522_poll_card]
-    I --> I1[rfid_rc522_antenna_on]
-    I --> J[rfid_rc522_request_a]
-    J --> J1[Write REQA to RC522 FIFO]
-    J1 --> J2[Start RC522_PCD_TRANSCEIVE]
-    J2 --> J3{ATQA received?}
-
-    J3 -- No --> K[Increment polling timeout counter]
-    K --> L{MAX_TIMEOUT_COUNT reached?}
-    L -- Yes --> M[rfid_rc522_recover]
-    M --> H
-    L -- No --> H
-
-    J3 -- Yes --> N[STATE_STREAMING]
-    N --> O[rfid_rc522_read_uid_full]
-
-    O --> P[rfid_rc522_anticoll_raw]
-    P --> P1[rfid_rc522_anticoll_level with PICC_CMD_CL1]
-    P1 --> P2[Validate CL1 BCC]
-    P2 --> Q[rfid_rc522_select_level with PICC_CMD_SELECT_CL1]
-    Q --> Q1[Read SAK]
-    Q1 --> R{SAK cascade bit set?}
-
-    R -- Yes --> S[rfid_rc522_anticoll_level with PICC_CMD_CL2]
-    S --> S1[Validate CL2 BCC]
-    S1 --> T[rfid_rc522_select_level with PICC_CMD_SELECT_CL2]
-    T --> T1[Read SAK]
-    T1 --> U{SAK cascade bit set?}
-
-    U -- Yes --> V[rfid_rc522_anticoll_level with PICC_CMD_CL3]
-    V --> V1[Validate CL3 BCC]
-    V1 --> W[rfid_rc522_select_level with PICC_CMD_SELECT_CL3]
-    W --> W1[Read final SAK]
-
-    R -- No --> X[Store UID size 4, ATQA, SAK]
-    U -- No --> Y[Store UID size 7, ATQA, SAK]
-    W1 --> Z[Store UID size 10, ATQA, SAK]
-
-    X --> AA[rfid_rc522_get_card_type]
-    Y --> AA
-    Z --> AA
-    AA --> AB[rfid_rc522_card_type_name]
-    AB --> AC[Log ATQA, SAK, UID size, card type]
-    AC --> AD[rfid_rc522_wait_card_removal]
-    AD --> H
+```mermaid
+flowchart TD
+    POLL[Poll card] --> REQA[REQA]
+    REQA --> ATQA{ATQA?}
+    ATQA -- No --> TIMEOUT[Timeout]
+    TIMEOUT --> POLL
+    ATQA -- Yes --> UID[Read UID]
+    UID --> CL1[CL1 anticollision + SELECT]
+    CL1 --> SAK{SAK cascade?}
+    SAK -- Yes --> CLN[Repeat CL2 / CL3]
+    SAK -- No --> TYPE[Card type]
+    CLN --> TYPE
+    TYPE --> REMOVE[Wait removal]
 ```
 
 ### Driver Layer Responsibilities
