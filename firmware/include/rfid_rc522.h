@@ -40,22 +40,23 @@ a * @file rfid_rc522.h
 #define RC522_REG_RX_CRC_PSEL      0x17
 #define RC522_REG_TX_CRC_INIT0     0x18
 #define RC522_REG_TX_CRC_INIT1     0x19
-#define RC522_REG_MOD_WIDTH        0x1C
+#define RC522_REG_MOD_WIDTH        0x24
 
 /* Page 2 : RF */
 #define RC522_REG_RESERVED_20      0x20
-#define RC522_REG_RX_GAIN          0x26   // Adresse du registre de configuration du gain du récepteur RF
+#define RC522_REG_CRC_RESULT_H     0x21   // Résultat CRC octet haut
+#define RC522_REG_CRC_RESULT_L     0x22   // Résultat CRC octet bas
+#define RC522_REG_RF_CFG           0x26   // Adresse du registre de configuration RF / gain du récepteur
 #define RC522_REG_DEMOD            0x27
 
 /*  Configuration du timer   */
 #define RC522_REG_TMode            0x2A   // Adresse du registre de configuration du mode du timer
 #define RC522_REG_TPrescaler       0x2B   // Adresse du registre du prescaler du timer interne
-#define RC522_REG_TReloadL         0x2C   // Adresse du registre de rechargement bas (octet faible) du timer
-#define RC522_REG_TReloadH         0x2D   // Adresse du registre de rechargement haut (octet fort) du timer
-                                          
+#define RC522_REG_TReloadH         0x2C   // Adresse du registre de rechargement haut (octet fort) du timer
+#define RC522_REG_TReloadL         0x2D   // Adresse du registre de rechargement bas (octet faible) du timer
+                                           
 #define RC522_REG_Demod            0x19   // Adresse du registre de configuration du démodulateur 
-#define RC522_REG_ModWidth         0x24   // Adresse du registre de configuration de la largeur
-#define RC522_REG_GsN              0x27   // Adresse du registre de la conductance de l'émetteur RF
+#define RC522_REG_GSN              0x27   // Adresse du registre de la conductance de l'émetteur RF
 /* Page 3 : TypeB */
 #define RC522_REG_RESERVED_30      0x30
 
@@ -94,11 +95,34 @@ a * @file rfid_rc522.h
 #define RC522_PCD_AUTHENT          0x0E  /* Authentification MIFARE */
 #define RC522_PCD_RESET            0x0F  // Commande pour effectuer une réinitialisation logicielle du RC522
 
+/* Bits du registre CommIrqReg */
+#define RC522_IRQ_TX               0x40
+#define RC522_IRQ_RX               0x20
+#define RC522_IRQ_IDLE             0x10
+#define RC522_IRQ_HIALERT          0x08
+#define RC522_IRQ_LOALERT          0x04
+#define RC522_IRQ_ERR              0x02
+#define RC522_IRQ_TIMER            0x01
+#define RC522_IRQ_CLEAR            0x7F
+
+#define RC522_IRQ_TRANSCEIVE_DONE  (RC522_IRQ_RX | RC522_IRQ_IDLE)
+#define RC522_IRQ_TRANSCEIVE_FAIL  (RC522_IRQ_TIMER | RC522_IRQ_ERR)
+
+/* Bits du registre DivIrqReg */
+#define RC522_DIV_IRQ_CRC          0x04   // Fin de calcul CRC
+
+/* Masques FIFO / modes */
+#define RC522_FIFO_FLUSH           0x80   // Vide le FIFO
+#define RC522_MODE_CRC_PRESET_6363 0x3D   // Preset CRC_A ISO14443-A
+
 /* ============================================================================
  * COMMANDES PICC (ISO/IEC 14443-3 Type A)
  * ============================================================================ */
 #define PICC_CMD_REQA              0x26  // Commande REQA pour demander la présence d'une carte RFID
 #define PICC_CMD_WUPA              0x52  /* Wake-up all */
+#define PICC_CMD_CL1               0x93  /* Cascade level 1 */
+#define PICC_CMD_CL2               0x95  /* Cascade level 2 */
+#define PICC_CMD_CL3               0x97  /* Cascade level 3 */
 #define PICC_CMD_ANTICOLL_1        0x93  // Commande de sélection de la cascade level 1 (anticollision)
 #define PICC_CMD_SELECT_CL1        0x93  /* Sélection CL1 */
 #define PICC_CMD_ANTICOLL_2        0x95  /* Anti-collision CL2 */
@@ -107,6 +131,14 @@ a * @file rfid_rc522.h
 #define PICC_CMD_SELECT_CL3        0x97  /* Sélection CL3 */
 #define PICC_CMD_HLTA              0x50  /* Halt */
 #define PICC_CMD_RATS              0xE0  /* Request ATS (Type A) */
+
+#define PICC_CASCADE_TAG           0x88  /* UID continue au niveau suivant */
+#define PICC_NVB_ANTICOLL          0x20  /* NVB pour anticollision */
+#define PICC_NVB_SELECT            0x70  /* NVB pour sélection */
+#define PICC_SAK_CASCADE           0x04  /* Bit cascade dans SAK */
+#define PICC_UID_PART_SIZE         4     /* Octets UID par niveau */
+#define PICC_UID_BCC_SIZE          1     /* Octet BCC */
+#define PICC_UID_FRAME_SIZE        5     /* UID part + BCC */
 
 /* Commandes MIFARE Classic */
 #define PICC_CMD_MIFARE_READ        0x30  /* Lecture bloc */
@@ -124,71 +156,46 @@ a * @file rfid_rc522.h
 typedef enum {
     RC522_STATUS_OK = 0,
     RC522_STATUS_ERROR = 1,
-    RC522_STATUS_COLLISION,
     RC522_STATUS_TIMEOUT = 2,
-    RC522_STATUS_NO_ROOM,
-    RC522_STATUS_INTERNAL_ERROR,
     RC522_STATUS_INVALID = 3,
-    RC522_STATUS_CRC_WRONG,
-    RC522_STATUS_MIFARE_AUTH_ERROR,
-    RC522_STATUS_BITCOUNT_FRAMING,
-    RC522_STATUS_BITFRAMING_ERROR,
-    RC522_STATUS_ABORTED,
-    RC522_STATUS_INVALID_UID,
-    RC522_STATUS_NOT_IMPLEMENTED
+    RC522_STATUS_BCC_MISMATCH,
+    RC522_STATUS_INVALID_UID
 } RC522_Status;
+
+typedef enum {
+    RC522_CARD_TYPE_UNKNOWN = 0,
+    RC522_CARD_TYPE_MIFARE_MINI,
+    RC522_CARD_TYPE_MIFARE_CLASSIC_1K,
+    RC522_CARD_TYPE_MIFARE_CLASSIC_4K,
+    RC522_CARD_TYPE_MIFARE_ULTRALIGHT,
+    RC522_CARD_TYPE_MIFARE_PLUS,
+    RC522_CARD_TYPE_ISO_14443_4,
+    RC522_CARD_TYPE_ISO_18092,
+    RC522_CARD_TYPE_NOT_COMPLETE
+} RC522_CardType;
 
 /* ============================================================================
  * STRUCTURES DE DONNÉES
  * ============================================================================ */
 
-/** @brief Taille maximale de l'UID (4 octets pour UID simple, 7 pour cascade) */
-#define RC522_UID_MAX_SIZE         7
-
-/** @brief Taille d'un bloc MIFARE Classic (16 bytes) */
-#define RC522_BLOCK_SIZE           16
-
-/** @brief Taille de la clé MIFARE (6 bytes) */
-#define RC522_KEY_SIZE             6
-
 /** @brief Taille de la FIFO RC522 (64 bytes) */
 #define RC522_FIFO_SIZE            64
 
+/** @brief Tailles UID ISO14443-A */
+#define RC522_UID_SINGLE_SIZE      4     /* UID simple */
+#define RC522_UID_DOUBLE_SIZE      7     /* UID double */
+#define RC522_UID_TRIPLE_SIZE      10    /* UID triple */
+#define RC522_UID_MAX_SIZE         RC522_UID_TRIPLE_SIZE /* Taille max UID */
+
 /**@brief Nbr tentatives pour détecter une carte MIFAIRE */
-#define MAX_TIMEOUT_COUNT 10
+#define MAX_TIMEOUT_COUNT 100
 
-/**
- * @brief Structure représentant l'UID d'une carte.
- */
 typedef struct {
-    uint8_t size;           /**< Taille de l'UID en octets (4, 7 ou 10) */
-    uint8_t uid[RC522_UID_MAX_SIZE]; /**< Octets de l'UID */
-    uint8_t sak;            /**< Select Acknowledge (réponse à SELECT) */
+    uint8_t uid[RC522_UID_MAX_SIZE]; /* Octets UID */
+    uint8_t size;                    /* Taille UID */
+    uint8_t sak;                     /* Select acknowledge */
+    uint8_t atqa[2];                 /* Réponse REQA */
 } RC522_UID;
-
-/**
- * @brief Clé d'authentification MIFARE.
- */
-typedef struct {
-    uint8_t key[RC522_KEY_SIZE];
-} RC522_Key;
-
-/**
- * @brief Configuration du driver RC522.
- */
-typedef struct {
-    /* Utilise les macros RC522_CS_LOW/RC522_CS_HIGH de spi.h */
-} RC522_Config;
-
-/**
- * @brief Résultat d'une opération de lecture/écriture.
- */
-typedef struct {
-    RC522_Status status;
-    uint8_t data[RC522_BLOCK_SIZE];
-    uint8_t data_size;
-} RC522_BlockData;
-
 
 /**
  * @brief utilise les macros de spi/cs/rst 
@@ -212,91 +219,15 @@ typedef struct {
 RC522_Status rfid_rc522_init(MFRC522_t *dev);
 
 /**
- * @brief Reset logiciel du module RC522.
- */
-void rfid_rc522_reset(MFRC522_t *dev);
-
-/**
  * @brief Active l'antenne RF.
  * @return RC522_STATUS_OK si succès.
  */
-void rfid_rc522_AntennaOn(MFRC522_t *dev);
+void rfid_rc522_antenna_on(MFRC522_t *dev);
 
 /**
  * @brief Désactive l'antenne RF.
  */
-void rfid_rc522_AntennaOff(MFRC522_t *dev);
-
-/**
- * @brief Lit la version du firmware du RC522.
- * @return Version du chip (0x88, 0x90, etc.) ou 0xFF si erreur.
- */
-uint8_t rfid_rc522_get_version(MFRC522_t *dev);
-
-/**
- * @brief Envoie une commande REQA pour détecter les cartes à proximité.
- * @param[out] atqa Buffer pour ATQA (2 bytes).
- * @return RC522_STATUS_OK si carte détectée.
- */
-RC522_Status rfid_rc522_request(MFRC522_t *dev, uint8_t *atqa);
-
-/**
- * @brief Effectue l'anti-collision et récupère l'UID de la carte.
- * @param[out] uid Structure pour stocker l'UID.
- * @return RC522_STATUS_OK si succès.
- */
-RC522_Status rfid_rc522_anticoll(MFRC522_t *dev, RC522_UID *uid);
-
-/**
- * @brief Sélectionne la carte avec son UID.
- * @param[in] uid UID de la carte à sélectionner.
- * @return RC522_STATUS_OK si succès.
- */
-RC522_Status rfid_rc522_select(MFRC522_t *dev, RC522_UID *uid);
-
-/**
- * @brief Authentifie un bloc avec une clé MIFARE.
- * @param block Adresse du bloc (0-63 pour MIFARE 1K).
- * @param key_type PICC_CMD_MIFARE_AUTH_KEY_A ou _B.
- * @param key Clé d'authentification.
- * @param uid UID de la carte.
- * @return RC522_STATUS_OK si succès.
- */
-RC522_Status rfid_rc522_auth(MFRC522_t *dev, uint8_t block, uint8_t key_type,
-                              const RC522_Key *key, const RC522_UID *uid);
-
-/**
- * @brief Lit un bloc MIFARE Classic.
- * @param block Adresse du bloc (0-63).
- * @param[out] data Buffer pour les données lues (16 bytes).
- * @return RC522_STATUS_OK si succès.
- */
-RC522_Status rfid_rc522_read_block(MFRC522_t *dev, uint8_t block, uint8_t *data);
-
-/**
- * @brief Écrit un bloc MIFARE Classic.
- * @param block Adresse du bloc (0-63).
- * @param data Données à écrire (16 bytes).
- * @return RC522_STATUS_OK si succès.
- */
-RC522_Status rfid_rc522_write_block(MFRC522_t *dev, uint8_t block, const uint8_t *data);
-
-/**
- * @brief Arrête la communication avec la carte (halt).
- */
-void rfid_rc522_halt(MFRC522_t *dev);
-
-/**
- * @brief Renvoie le dernier code d'erreur du module.
- * @return Code d'erreur.
- */
-uint8_t rfid_rc522_get_error(void);
-
-/**
- * @brief Lit le registre Crypto1 Status.
- * @return Valeur du registre.
- */
-uint8_t rfid_rc522_get_crypto_status(MFRC522_t *dev);
+void rfid_rc522_antenna_off(MFRC522_t *dev);
 
 /**
  * @brief Écrit un octet dans un registre du RC522.
@@ -322,7 +253,7 @@ uint8_t rfid_rc522_read_reg(MFRC522_t *dev, uint8_t addr);
  *
  * @return void
  */
-void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
+void rfid_rc522_clear_bit_mask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
 
 
 /**
@@ -333,10 +264,10 @@ void rfid_rc522_ClearBitMask(MFRC522_t *dev, uint8_t reg, uint8_t mask);
  *
  * @param[in] dev  Pointeur vers la structure MFRC522 (périphérique cible).
  *
- * @return STATUS_OK      Une carte a répondu à la requête REQA.
- * @return STATUS_TIMEOUT Aucune carte détectée dans le champ RF.
+ * @param[out] atqa Buffer de 2 octets recevant l'ATQA.
+ * @return STATUS_OK si une carte répond, sinon code d'erreur.
  */
-uint8_t rfid_rc522_PollCard(MFRC522_t *dev);
+RC522_Status rfid_rc522_poll_card(MFRC522_t *dev, uint8_t *atqa);
 
 /**
  * @brief Envoie une commande REQA et récupère l'ATQA de la carte.
@@ -344,13 +275,13 @@ uint8_t rfid_rc522_PollCard(MFRC522_t *dev);
  * @param[out] atqa Buffer de 2 octets recevant l'ATQA.
  * @return RC522_STATUS_OK si une carte répond, sinon code d'erreur.
  */
-uint8_t rfid_rc522_RequestA(MFRC522_t *dev, uint8_t *atqa);
+RC522_Status rfid_rc522_request_a(MFRC522_t *dev, uint8_t *atqa);
 
 /**
  * @brief Réinitialise le module MFRC522 après une erreur ou un blocage.
  * @param[in] dev Pointeur vers la structure MFRC522 (périphérique cible).
  */
-void rfid_rc522_Recover(MFRC522_t *dev);
+void rfid_rc522_recover(MFRC522_t *dev);
 
 /**
  * @brief Exécute l'anticollision ISO 14443-A et récupère UID + BCC.
@@ -358,7 +289,16 @@ void rfid_rc522_Recover(MFRC522_t *dev);
  * @param[out] uid Buffer de 5 octets : UID[0..3] + BCC.
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
-uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid);
+RC522_Status rfid_rc522_anticoll_raw(MFRC522_t *dev, uint8_t *uid);
+
+/**
+ * @brief Lit l'UID complet d'une carte RFID (CL1/CL2/CL3).
+ * @param[in] dev Pointeur vers la structure MFRC522.
+ * @param[out] uid Structure recevant ATQA, UID, taille et SAK.
+ * @param[in] atqa ATQA obtenu pendant le polling.
+ * @return RC522_STATUS_OK si succès, sinon code d'erreur.
+ */
+RC522_Status rfid_rc522_read_uid_full(MFRC522_t *dev, RC522_UID *uid, const uint8_t *atqa);
 
 /**
  * @brief Lit l'UID 4 octets d'une carte RFID.
@@ -366,14 +306,28 @@ uint8_t rfid_rc522_Anticoll(MFRC522_t *dev, uint8_t *uid);
  * @param[out] uid Buffer de 4 octets recevant l'UID.
  * @return RC522_STATUS_OK si succès, sinon code d'erreur.
  */
-uint8_t rfid_rc522_ReadUid(MFRC522_t *dev, uint8_t *uid);
+RC522_Status rfid_rc522_read_uid(MFRC522_t *dev, uint8_t *uid);
+
+/**
+ * @brief Déduit le type de carte depuis SAK/ATQA.
+ * @param[in] uid Structure UID complète.
+ * @return Type de carte détecté.
+ */
+RC522_CardType rfid_rc522_get_card_type(const RC522_UID *uid);
+
+/**
+ * @brief Convertit un type de carte en texte lisible.
+ * @param[in] type Type de carte.
+ * @return Nom du type de carte.
+ */
+const char *rfid_rc522_card_type_name(RC522_CardType type);
 
 /**
  * @brief Attend le retrait de la carte RFID.
  * @param[in] dev Pointeur vers la structure MFRC522.
  * @return RC522_STATUS_OK si la carte est retirée, sinon code d'erreur.
  */
-uint8_t waitcardRemoval(MFRC522_t *dev);
+RC522_Status rfid_rc522_wait_card_removal(MFRC522_t *dev);
 
 
 
