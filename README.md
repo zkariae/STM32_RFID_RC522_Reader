@@ -557,6 +557,14 @@ This avoids sending an unnecessary second `REQA` before UID reading and keeps th
 
 SAK is the card response to the `SELECT` command and provides standardized information about the selected card. The driver uses SAK rather than hardcoded UID values to classify card families.
 
+## Development Challenges
+
+- **MFRC522 IRQ handling:** Anticollision and `REQA` required polling `CommIrqReg` for receive, idle, timer, and error bits. This was needed to detect the real end of a transceive operation and avoid relying on status registers that do not reliably indicate command completion.
+
+- **Stable ATQA to UID flow:** The application stores the ATQA received during `REQA` and passes it to `rfid_rc522_read_uid_full()`. This avoids sending a second request before UID reading and keeps the ISO14443-A detection sequence consistent.
+
+- **Hardware and SPI signal debugging:** Hardware validation required checking the RC522 wiring, antenna state, reset line, chip select behavior, and SPI traces. In particular, read/write register access had to be distinguished on MOSI by the first address byte, while reads required a dummy MOSI byte to clock the actual register value back on MISO.
+
 ## Build and Flash
 
 From the `firmware` directory:
