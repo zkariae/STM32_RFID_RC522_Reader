@@ -423,6 +423,119 @@ If repeated polling attempts fail, the firmware calls `rfid_rc522_recover()`.
 
 Reads the full UID using `rfid_rc522_read_uid_full()`, logs card metadata, waits for card removal, then returns to `IDLE`.
 
+## Global RC522 Driver Schema
+
+The diagram below shows how the application state machine calls the RC522 driver and how the driver moves from SPI register access to RF card communication.
+
+```mermaid
+flowchart TD
+    A[main.c] --> B[System initialization]
+    B --> B1[systick_init]
+    B --> B2[gpio_driver_init]
+    B --> B3[uart_init]
+    B --> B4[spi_driver_init]
+    B --> C[Application state machine]
+
+    C --> D[STATE_INIT]
+    D --> E[rfid_rc522_init]
+    E --> F{RC522_STATUS_OK?}
+    F -- No --> D
+    F -- Yes --> G[STATE_VERIFY]
+    G --> H[STATE_IDLE]
+
+    H --> I[rfid_rc522_poll_card]
+    I --> I1[rfid_rc522_antenna_on]
+    I --> J[rfid_rc522_request_a]
+    J --> J1[Write REQA to RC522 FIFO]
+    J1 --> J2[Start RC522_PCD_TRANSCEIVE]
+    J2 --> J3{ATQA received?}
+
+    J3 -- No --> K[Increment polling timeout counter]
+    K --> L{MAX_TIMEOUT_COUNT reached?}
+    L -- Yes --> M[rfid_rc522_recover]
+    M --> H
+    L -- No --> H
+
+    J3 -- Yes --> N[STATE_STREAMING]
+    N --> O[rfid_rc522_read_uid_full]
+
+    O --> P[rfid_rc522_anticoll_raw]
+    P --> P1[rfid_rc522_anticoll_level with PICC_CMD_CL1]
+    P1 --> P2[Validate CL1 BCC]
+    P2 --> Q[rfid_rc522_select_level with PICC_CMD_SELECT_CL1]
+    Q --> Q1[Read SAK]
+    Q1 --> R{SAK cascade bit set?}
+
+    R -- Yes --> S[rfid_rc522_anticoll_level with PICC_CMD_CL2]
+    S --> S1[Validate CL2 BCC]
+    S1 --> T[rfid_rc522_select_level with PICC_CMD_SELECT_CL2]
+    T --> T1[Read SAK]
+    T1 --> U{SAK cascade bit set?}
+
+    U -- Yes --> V[rfid_rc522_anticoll_level with PICC_CMD_CL3]
+    V --> V1[Validate CL3 BCC]
+    V1 --> W[rfid_rc522_select_level with PICC_CMD_SELECT_CL3]
+    W --> W1[Read final SAK]
+
+    R -- No --> X[Store UID size 4, ATQA, SAK]
+    U -- No --> Y[Store UID size 7, ATQA, SAK]
+    W1 --> Z[Store UID size 10, ATQA, SAK]
+
+    X --> AA[rfid_rc522_get_card_type]
+    Y --> AA
+    Z --> AA
+    AA --> AB[rfid_rc522_card_type_name]
+    AB --> AC[Log ATQA, SAK, UID size, card type]
+    AC --> AD[rfid_rc522_wait_card_removal]
+    AD --> H
+```
+
+### Driver Layer Responsibilities
+
+| Layer | Main Functions | Responsibility |
+| --- | --- | --- |
+| Application layer | `state_init()`, `state_idle()`, `state_streaming()` | Drives the high-level card detection state machine. |
+| Public RC522 API | `rfid_rc522_init()`, `rfid_rc522_poll_card()`, `rfid_rc522_read_uid_full()`, `rfid_rc522_wait_card_removal()` | Provides the main operations used by `main.c`. |
+| ISO14443-A flow | `rfid_rc522_request_a()`, `rfid_rc522_anticoll_raw()`, `rfid_rc522_anticoll_level()`, `rfid_rc522_select_level()` | Sends `REQA`, performs anticollision, sends `SELECT`, and reads `SAK`. |
+| Classification | `rfid_rc522_get_card_type()`, `rfid_rc522_card_type_name()` | Converts final `SAK` metadata into a human-readable card type. |
+| SPI/register layer | `rfid_rc522_write_reg()`, `rfid_rc522_read_reg()`, `rfid_rc522_clear_bit_mask()` | Accesses MFRC522 registers through SPI. |
+
+### Main Call Sequence
+
+```text
+main()
+ ├─ systick_init()
+ ├─ gpio_driver_init()
+ ├─ uart_init()
+ ├─ spi_driver_init()
+ └─ state machine loop
+     ├─ STATE_INIT
+     │   └─ state_init()
+     │       └─ rfid_rc522_init(&rfID)
+     │
+     ├─ STATE_IDLE
+     │   └─ state_idle()
+     │       └─ rfid_rc522_poll_card(&rfID, current_atqa)
+     │           ├─ rfid_rc522_antenna_on(&rfID)
+     │           └─ rfid_rc522_request_a(&rfID, current_atqa)
+     │
+     └─ STATE_STREAMING
+         ├─ state_streaming()
+         │   ├─ rfid_rc522_read_uid_full(&rfID, &full_uid, current_atqa)
+         │   │   ├─ rfid_rc522_anticoll_raw(&rfID, rawUid)
+         │   │   │   └─ rfid_rc522_anticoll_level(&rfID, PICC_CMD_CL1, rawUid)
+         │   │   ├─ rfid_rc522_select_level(&rfID, PICC_CMD_SELECT_CL1, rawUid, &full_uid.sak)
+         │   │   ├─ optional: rfid_rc522_anticoll_level(&rfID, PICC_CMD_CL2, rawUidCl2)
+         │   │   ├─ optional: rfid_rc522_select_level(&rfID, PICC_CMD_SELECT_CL2, rawUidCl2, &full_uid.sak)
+         │   │   ├─ optional: rfid_rc522_anticoll_level(&rfID, PICC_CMD_CL3, rawUidCl3)
+         │   │   └─ optional: rfid_rc522_select_level(&rfID, PICC_CMD_SELECT_CL3, rawUidCl3, &full_uid.sak)
+         │   ├─ rfid_rc522_get_card_type(&full_uid)
+         │   └─ rfid_rc522_card_type_name(card_type)
+         └─ rfid_rc522_wait_card_removal(&rfID)
+```
+
+`rfid_rc522_anticoll_level()` and `rfid_rc522_select_level()` are internal driver helpers. They are shown here to document the real internal sequence used by `rfid_rc522_read_uid_full()`.
+
 ## Error Handling
 
 Driver functions use `RC522_Status` values:
