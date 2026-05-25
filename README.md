@@ -432,69 +432,36 @@ Reads the full UID using `rfid_rc522_read_uid_full()`, logs card metadata, waits
 
 ## Global RC522 Driver Schema
 
-The diagram below shows how the application state machine calls the RC522 driver and how the driver moves from SPI register access to RF card communication.
+The diagrams below are intentionally small to keep GitHub rendering reliable on desktop and mobile. Detailed function calls are listed in the text sequence that follows.
+
+### Application State Flow
 
 ```mermaid
 flowchart TD
-    A[main.c] --> B[System initialization]
-    B --> B1[systick_init]
-    B --> B2[gpio_driver_init]
-    B --> B3[uart_init]
-    B --> B4[spi_driver_init]
-    B --> C[Application state machine]
+    INIT --> VERIFY
+    VERIFY --> IDLE
+    IDLE -->|Card detected| STREAMING
+    IDLE -->|Repeated timeout| RECOVER
+    RECOVER --> IDLE
+    STREAMING -->|Card removed| IDLE
+    STREAMING -->|Error| INIT
+```
 
-    C --> D[STATE_INIT]
-    D --> E[rfid_rc522_init]
-    E --> F{RC522_STATUS_OK?}
-    F -- No --> D
-    F -- Yes --> G[STATE_VERIFY]
-    G --> H[STATE_IDLE]
+### RFID Detection Flow
 
-    H --> I[rfid_rc522_poll_card]
-    I --> I1[rfid_rc522_antenna_on]
-    I --> J[rfid_rc522_request_a]
-    J --> J1[Write REQA to RC522 FIFO]
-    J1 --> J2[Start RC522_PCD_TRANSCEIVE]
-    J2 --> J3{ATQA received?}
-
-    J3 -- No --> K[Increment polling timeout counter]
-    K --> L{MAX_TIMEOUT_COUNT reached?}
-    L -- Yes --> M[rfid_rc522_recover]
-    M --> H
-    L -- No --> H
-
-    J3 -- Yes --> N[STATE_STREAMING]
-    N --> O[rfid_rc522_read_uid_full]
-
-    O --> P[rfid_rc522_anticoll_raw]
-    P --> P1[rfid_rc522_anticoll_level with PICC_CMD_CL1]
-    P1 --> P2[Validate CL1 BCC]
-    P2 --> Q[rfid_rc522_select_level with PICC_CMD_SELECT_CL1]
-    Q --> Q1[Read SAK]
-    Q1 --> R{SAK cascade bit set?}
-
-    R -- Yes --> S[rfid_rc522_anticoll_level with PICC_CMD_CL2]
-    S --> S1[Validate CL2 BCC]
-    S1 --> T[rfid_rc522_select_level with PICC_CMD_SELECT_CL2]
-    T --> T1[Read SAK]
-    T1 --> U{SAK cascade bit set?}
-
-    U -- Yes --> V[rfid_rc522_anticoll_level with PICC_CMD_CL3]
-    V --> V1[Validate CL3 BCC]
-    V1 --> W[rfid_rc522_select_level with PICC_CMD_SELECT_CL3]
-    W --> W1[Read final SAK]
-
-    R -- No --> X[Store UID size 4, ATQA, SAK]
-    U -- No --> Y[Store UID size 7, ATQA, SAK]
-    W1 --> Z[Store UID size 10, ATQA, SAK]
-
-    X --> AA[rfid_rc522_get_card_type]
-    Y --> AA
-    Z --> AA
-    AA --> AB[rfid_rc522_card_type_name]
-    AB --> AC[Log ATQA, SAK, UID size, card type]
-    AC --> AD[rfid_rc522_wait_card_removal]
-    AD --> H
+```mermaid
+flowchart TD
+    POLL[Poll card] --> REQA[REQA]
+    REQA --> ATQA{ATQA?}
+    ATQA -- No --> TIMEOUT[Timeout]
+    TIMEOUT --> POLL
+    ATQA -- Yes --> UID[Read UID]
+    UID --> CL1[CL1 anticollision + SELECT]
+    CL1 --> SAK{SAK cascade?}
+    SAK -- Yes --> CLN[Repeat CL2 / CL3]
+    SAK -- No --> TYPE[Card type]
+    CLN --> TYPE
+    TYPE --> REMOVE[Wait removal]
 ```
 
 ### Driver Layer Responsibilities
@@ -590,6 +557,14 @@ This avoids sending an unnecessary second `REQA` before UID reading and keeps th
 
 SAK is the card response to the `SELECT` command and provides standardized information about the selected card. The driver uses SAK rather than hardcoded UID values to classify card families.
 
+## Development Challenges
+
+- **MFRC522 IRQ handling:** Anticollision and `REQA` required polling `CommIrqReg` for receive, idle, timer, and error bits. This was needed to detect the real end of a transceive operation and avoid relying on status registers that do not reliably indicate command completion.
+
+- **Stable ATQA to UID flow:** The application stores the ATQA received during `REQA` and passes it to `rfid_rc522_read_uid_full()`. This avoids sending a second request before UID reading and keeps the ISO14443-A detection sequence consistent.
+
+- **Hardware and SPI signal debugging:** Hardware validation required checking the RC522 wiring, antenna state, reset line, chip select behavior, and SPI traces. In particular, read/write register access had to be distinguished on MOSI by the first address byte, while reads required a dummy MOSI byte to clock the actual register value back on MISO.
+
 ## Build and Flash
 
 From the `firmware` directory:
@@ -619,15 +594,91 @@ Runtime logs are sent over USART2:
 - TX: PA2
 - RX: PA3
 
-Example successful detection output:
+### Initialization Logs
+
+These logs show a successful RC522 initialization sequence. The firmware enters `STATE_INIT`, performs a hardware reset, reads the MFRC522 version register, and confirms that the driver is ready.
+
+```text
+>>> STATE: INIT
+=== STATE: INIT ===
+[DBG]  [src/rfid_rc522.c:86] MFRC522 Min Init started
+[DBG]  [src/rfid_rc522.c:87]  Starting hardware initialization ...
+[DBG]  [src/rfid_rc522.c:96] Hardware reset complete
+[DBG]  [src/rfid_rc522.c:120] OK --> version :0x92
+[INFO] [src/rfid_rc522.c:121] RC522 initialisé
+[INIT] Driver initialization OK
+```
+
+Meaning:
+
+- `STATE: INIT`: the application is initializing the RC522 driver.
+- `Hardware reset complete`: the RC522 reset pin sequence completed.
+- `version :0x92`: the MFRC522 version register was read successfully.
+- `RC522 initialisé`: the RC522 initialization completed successfully.
+
+### Idle Polling Without Card
+
+These logs show the firmware polling for a card while no card is present in the RF field. `RequestA` is sent, but no ATQA is available in the FIFO, so the driver reports a timeout.
+
+```text
+>>> STATE: IDLE
+[DBG]  [src/rfid_rc522.c:427] Antenna on
+
+[DBG]  [src/rfid_rc522.c:258] ClearBitMask reg: 0x08
+[DBG]  [src/rfid_rc522.c:259] ClearBitMask mask: 0x08
+[DBG]  [src/rfid_rc522.c:181] RequestA
+[DBG]  [src/rfid_rc522.c:210] RequestA IRQ: 0x44
+[DBG]  [src/rfid_rc522.c:211] RequestA ERR: 0x00
+[DBG]  [src/rfid_rc522.c:212] RequestA FIFO: 0x00
+[DBG]  [src/rfid_rc522.c:237] RequestA timeout
+[DBG]  [src/main.c:90] Card not detected, timeout count = 33
+```
+
+Meaning:
+
+- `Antenna on`: the RF field is enabled before polling.
+- `RequestA IRQ: 0x44`: IRQ flags were observed during the request sequence.
+- `RequestA FIFO: 0x00`: no ATQA bytes were received.
+- `RequestA timeout`: no valid card response was available.
+- `timeout count`: application-side counter used to trigger recovery after repeated failures.
+
+### Card Detection Logs
+
+These logs show a successful `REQA` polling cycle. The RC522 receives a 2-byte ATQA response and the application moves from `IDLE` to `STREAMING`.
+
+```text
+>>> STATE: IDLE
+[DBG]  [src/rfid_rc522.c:427] Antenna on
+[DBG]  [src/rfid_rc522.c:258] ClearBitMask reg: 0x08
+[DBG]  [src/rfid_rc522.c:259] ClearBitMask mask: 0x08
+[DBG]  [src/rfid_rc522.c:181] RequestA
+[DBG]  [src/rfid_rc522.c:210] RequestA IRQ: 0x64
+[DBG]  [src/rfid_rc522.c:211] RequestA ERR: 0x00
+[DBG]  [src/rfid_rc522.c:212] RequestA FIFO: 0x02
+[DBG]  [src/rfid_rc522.c:231] RequestA ATQA[0]: 0x04
+[DBG]  [src/rfid_rc522.c:232] RequestA ATQA[1]: 0x00
+[DBG]  [src/main.c:83] Card detected
+```
+
+Meaning:
+
+- `RequestA FIFO: 0x02`: two bytes were received from the card.
+- `ATQA[0]: 0x04` and `ATQA[1]: 0x00`: card answer to the ISO14443-A `REQA` command.
+- `Card detected`: the application can start UID reading.
+
+### Streaming / UID Logs
+
+These logs show the UID reading phase after card detection. The driver performs anticollision, selects the card, reads SAK, and classifies the card type.
 
 ```text
 >>> STATE: STREAMING
-ATQA[0]: 0x04
-ATQA[1]: 0x00
-SAK: 0x08
-UID size: 4
-MIFARE Classic 1K
+[DBG]  [src/rfid_rc522.c:489] Anticoll
+[DBG]  [src/rfid_rc522.c:616] UID SAK: 0x08
+[DBG]  [src/main.c:112] ATQA[0]: 0x04
+[DBG]  [src/main.c:113] ATQA[1]: 0x00
+[DBG]  [src/main.c:114] SAK: 0x08
+[DBG]  [src/main.c:115] UID size: 4
+[DBG]  [src/main.c:118] MIFARE Classic 1K
 ```
 
 Meaning:
@@ -636,6 +687,7 @@ Meaning:
 - `SAK`: select acknowledge byte used for cascade continuation and card classification.
 - `UID size`: final UID length after cascade processing.
 - Card type: human-readable classification derived from SAK.
+- `SAK = 0x08`: commonly identifies a MIFARE Classic 1K card.
 
 ## Current Limitations
 
